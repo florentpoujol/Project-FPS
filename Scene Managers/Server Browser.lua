@@ -1,6 +1,6 @@
 
-serverBrowserAddress = "http://localhost/CSServerBrowser/index.php"
---serverBrowserAddress = "http://csserverbrowser.florentpoujol.fr/index.php"
+--ServerBrowserAddress = "http://localhost/CSServerBrowser/index.php"
+ServerBrowserAddress = "http://csserverbrowser.florentpoujol.fr/index.php"
 
 function Behavior:Awake()  
     self.uiGO = GameObject.Get( "UI" )
@@ -27,7 +27,7 @@ function Behavior:GetServers()
         child:Destroy()
     end
     
-    CS.Web.Get( serverBrowserAddress, nil, CS.Web.ResponseType.JSON, function( error, data )
+    CS.Web.Get( ServerBrowserAddress, nil, CS.Web.ResponseType.JSON, function( error, data )
         if error ~= nil then
             cprint( "Error getting servers", error )
             return
@@ -44,8 +44,7 @@ end
 
 
 function Behavior:BuildServersList( servers )
-    -- build server list
-    local text = "Dsiplaying "..table.getlength( servers ).." servers..."
+    local text = table.getlength( servers ).." servers found"
     cprint( text )
     self.statusGO.textRenderer.text = text
 
@@ -56,26 +55,36 @@ function Behavior:BuildServersList( servers )
     local deadServers = {}
     local processDeadServers = function()
         for i, server in pairs( deadServers ) do
-            
+            cprint( "remove server", server.id, server.name, server.ip )
         end
     end
     
     local o = {}
+    -- I use an object here because I can't vreate and call a local function in one instruction (the variable that holds the function is nil inside the function)
+    -- but it works when the function is in an object (and probably a global function, too)
     o.TestConnect = function( callback )
-        table.print( servers )
+        --table.print( servers )
         server = table.shift( servers )
         
         if server == nil then
-            ProcessDeadServers()
+            self.statusGO.textRenderer.text = ""
+            processDeadServers()
             return
         end
-        --cprint("testing server", server.id, server.name, server.ip)
+        cprint("Testing connection with server", server.id, server.name, server.ip)
+        
+        if server.ip == Client.ip then
+            server.ip = "127.0.0.1"
+        end
         
         CS.Network.Connect( server.ip, CS.Network.DefaultPort, function()
             -- if we can connect to the server, display it in the list
             -- cprint("server OK", server.id, server.name, server.ip)
+            
+            
+            
             CS.Network.Disconnect()
-        
+            local ip = server.ip
             local go = GameObject.New( "Server "..server.id, {
                 parent = self.serversListGO,
                 textRenderer = {
@@ -91,7 +100,8 @@ function Behavior:BuildServersList( servers )
                 tags = { "mouseinput" },
                 
                 OnClick = function()
-                    Server.interface:SendMessage( "ConnectClient", { ip = server.ip } )
+                    Server.interface:SendMessage( "ConnectClient", { ip = ip } )
+                    
                 end
             })
             
@@ -110,7 +120,7 @@ function Behavior:BuildServersList( servers )
     o.TestConnect()
     
     
-    self.statusGO.textRenderer.text = ""
+    --self.statusGO.textRenderer.text = ""
 end
 
 
