@@ -3,7 +3,7 @@ isFocused boolean False
 maxLength number 999999
 characterRange string ""
 defaultValue string ""
-focusOnbackgroundClick boolean True
+focusOnBackgroundClick boolean True
 /PublicProperties]]
 -- Input.lua
 -- Scripted behavior for GUI.Input component.
@@ -11,13 +11,6 @@ focusOnbackgroundClick boolean True
 -- Last modified for v1.2.0
 -- Copyright © 2013 Florent POUJOL, published under the MIT license.
 
---[[PublicProperties
-isFocused boolean false
-maxLength number 9999
-characterRange string ""
-defaultValue string ""
-focusOnbackgroundClick boolean true
-/PublicProperties]]
 
 function Behavior:Awake()
     if self.gameObject.input == nil then

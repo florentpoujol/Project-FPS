@@ -9,23 +9,47 @@ function InitGameType( gt )
         if short ~= gt then
             -- removed all gameObject than have a tag other than the current gt's tag
             for i, go in pairs( GameObject.GetWithTag( short ) ) do
-                go:Destroy()
+                if not go:HasTag( gt ) then
+                    go:Destroy()
+                end
             end
         end
     end
 
     
-    Game.spawns = {
-        team1 = GameObject.GetWithTag( { "spawn", "team1" } ),
-        team2 = GameObject.GetWithTag( { "spawn", "team2" } )
+    -- actually just remove the camera component on the other team's level spawn
+    -- so that the player "spawn" in its level spawn
+    -- (the character is not spawned yet, but the player sees the level throught the camera on the level spawn)
+    for i, gameObject in pairs( GameObject.GetWithTag( "levelspawn" ) ) do
+        if not gameObject:HasTag( "team"..Client.data.team ) then
+            --cprint("destroy camera on go", gameObject )
+            --gameObject.camera:Destroy()
+        end
+    end
+    
+    Level.menu.Show()
+    
+    --
+    Level.spawns = {
+        GameObject.GetWithTag( { "spawn", "team1" } ),
+        GameObject.GetWithTag( { "spawn", "team2" } )
     }
+    
+    print("test mouse input")
+    for i, go in pairs (GameObject.GetWithTag( "mouseinput" )) do
+        print(go, go.modelRenderer)
+        if go.modelRenderer ~= nil then
+        print(go.modelRenderer.model)
+       end
+    end
+       print("test mouse input")
 end
 
 
 
 function SpawnPlayer()
-    local spawns = Game.spawns[ Client.team ]
-    local spawnCount =  #spawns
+    local spawns = Level.spawns[ Client.data.team ]
+    local spawnCount = #spawns
     
     local characterPositions = {}
     for i, character in pairs( GameObject.GetWithTag( "character" ) ) do
@@ -37,8 +61,8 @@ function SpawnPlayer()
     
     while true do
         loopCount = loopCount + 1
-                
-        local rand = math.floor( math.randomrange( 1, #spawns + 0.99 ) )
+        
+        local rand = math.floor( math.randomrange( 1, spawnCount + 0.99 ) )
         spawnPos = spawns[ rand ].transform.position
         local tooClose = false
         
@@ -53,9 +77,14 @@ function SpawnPlayer()
                 break            
             end            
         end
+        
+        if not tooClose then
+            break
+        end
     end
     
     local playerGO = GameObject.New( CharacterPrefab )
     playerGO.physics:WarpPosition( spawnPos )
+    Client.data.isSpawned = true
 end
 

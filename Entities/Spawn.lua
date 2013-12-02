@@ -1,8 +1,11 @@
-function Behavior:Awake()
-    self.gameObject:AddTag( "Spawn" )
-    -- specific
-end
+--[[PublicProperties
+gameTypes string ""
+/PublicProperties]]
 
-function Behavior:Update()
+function Behavior:Awake()
+    if self.gameObject.modelRenderer ~= nil then
+        self.gameObject.modelRenderer:Destroy()
+    end
+    
     
 end

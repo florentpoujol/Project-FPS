@@ -24,17 +24,16 @@ Prefabs = {
 
 
 function Behavior:Awake()
-    CS.Destroy( self.gameObject )
-    
     if self.Prefab ~= "" then
-
         local sourceGO = self.gameObject        
         local children = self.gameObject:GetChildren()
         local positions = { self.gameObject.transform:GetPosition() }
 
         if self.Multiply then
             sourceGO = children[1]
-            
+            if sourceGO == nil then
+                return
+            end
             positions = {}
             for i, child in pairs( children ) do
                 table.insert( positions, child.transform:GetPosition() )
@@ -42,7 +41,7 @@ function Behavior:Awake()
         end
         
         local eulerAngles = sourceGO.transform:GetEulerAngles()
-        local scale = sourceGO.transform:GetLocalScale()
+        local localScale = sourceGO.transform:GetLocalScale()
         
 
         local path = self.Prefab
@@ -83,4 +82,9 @@ function Behavior:Awake()
             end
         end
     end
+end
+
+function Behavior:Start()
+    --CS.Destroy( self.gameObject )
+    -- throw exception : Unhandled Exception: System.NullReferenceException: Object reference not set to an instance of an object.
 end

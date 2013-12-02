@@ -25,11 +25,14 @@ MouseInput.Config = MouseInput.DefaultConfig()
 
 ----------------------------------------------------------------------------------
 
-
+--[[PublicProperties
+tags string ""
+updateInterval number 2
+/PublicProperties]]
 
 function Behavior:Awake()
     if not MouseInput.isLoaded then
-        if Daneel.Utilities.GlobalExists( "MouseInputUserConfig" ) and type( MouseInputUserConfig ) == "function" then
+        if table.getvalue( _G, "MouseInputUserConfig" ) ~= nil and type( MouseInputUserConfig ) == "function" then
             MouseInput.Config = MouseInputUserConfig()
         end
         MouseInput.isLoaded = true
@@ -42,7 +45,10 @@ function Behavior:Awake()
         error( "MouseInput:Awake() : GameObject with name '" .. self.gameObject:GetName() .. "' has no Camera component attached." )
     end  
 
-    self.tags = self.tags:split( ",", true )
+    self.tags = string.split( self.tags, "," )
+    for k, v in pairs( self.tags ) do
+        self.tags[ k ] = string.trim( v )
+    end
     self.gameObject.mouseInput = self
     self.frameCount = 0
     self.lastLeftClickFrame = -MouseInput.Config.doubleClickDelay

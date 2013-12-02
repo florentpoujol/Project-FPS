@@ -1,68 +1,138 @@
-
-Server = {   
-    maxPlayerCount = 12,
-    name = "Server Name",
-    level = "", --scene path
+ 
+Server = {
+    interface = nil, -- this gameObject
+    isRunning = false,
+    
+    defaultData = {
+        ip = "127.0.0.1",
+        id = -1,
+        level = "", --scene path
+        
+        playersById = {},
+        playerIds = {},
+    },
+    data = {
+        maxPlayerCount = 12,
+        name = "Server Name",
+    }
 }
 
-function Server.GetNetworkId()
-    Server.lastNetworkId = Server.lastNetworkId + 1
-    return Server.lastNetworkId
+function Server.Init()
+    Server.isRunning = false
+    Server.data = table.merge( Server.data, Server.defaultData )
 end
 
-function Server.Init()  
-    Server.playersById = {}
-    Server.playerIds = {}
-    Server.lastNetworkId = 100
-    Server.isRunning = false
+
+function Server.UpdateServerBrowser( delete )
+    local data = Server.data
+    if delete then
+        data.deleteFromServerBrowser = true -- only usefull when when == true
+    end
+    
+    CS.Web.Post( "http://localhost/CSServerBrowser/index.php", data, CS.Web.ResponseType.JSON, function( error, data )
+        local action = "updated"
+        if delete then
+            action = "deleted"
+        end
+            
+        if error ~= nil then
+            cprint( "Error "..action.." server on server browser", error )
+            return
+        end
+
+        if data ~= nil then
+            if data.id ~= nil then
+                Server.data.id = data.id
+                Server.data.ip = data.ip
+            end
+            
+            cprint("Successfully "..action.." server on the server browser", Server.data.id, Server.data.ip )
+        else
+            cprint("Successfully "..action.." server on the server browser but didn't received data confirmation" )
+        end
+    end )
+    
 end
-Server.Init()
+
+
+function Server.Start()
+    if Server.isRunning then
+        cprint("Server.Start() : server is already running")
+        return
+    end
+    
+    cprint("Start server")
+    Server.Init()
+    CS.Network.Server.Start()
+    Server.isRunning = true
+    
+    Server.UpdateServerBrowser()
+end
+
+function Server.Stop()
+   cprint( "Stop Server" )
+   Server.UpdateServerBrowser( true )
+   
+   CS.Network.Server.Stop()
+   Server.Init()
+end
+
+
+local OriginalExit = CS.Exit
+
+function CS.Exit()
+    if Server.isRunning then
+        Server.Stop()
+    end
+    OriginalExit()
+end
+
+----------------------------------------------------------------------
 
 
 Client = {
-    name = "Player",
+    isConnected = false,
     ipToConnectTo = "127.0.0.1",
+    
+    defaultData = {
+        id = -1,
+        playersById = {},
+        playerIds = {},
+        team = 1,
+        isSpawned = false
+    },
+    data = {
+        name = "Player",
+    }
 }
 
 function Client.Init()
     Client.isConnected = false
-    Client.id = -1
-    Client.playersById = {}
-    Client.playerIds = {}
+    Client.data = table.merge( Client.data, Client.defaultData )
 end
-Client.Init()
 
 
 ----------------------------------------------------------------------
 
 
 function Behavior:Awake()
+    Server.interface = self.gameObject
     self.gameObject.networkSync:Setup( 0 )
+
     
     -- Called when someone just arrived on the server, before the success callback of CS.NetWork.Connect() 
-    -- (which is called even if the player is dosconnected from there)
+    -- (which is called even if the player is disconnected from there)
     CS.Network.Server.OnPlayerJoined( 
         function( player )
-            print("Server.OnPlayerJoined", player.id)
-
-            if table.getlength( Server.playersById ) < Server.maxPlayerCount then
-                player.isActive = false
-                player.name = "Player #" .. player.id
-                
-                Server.playersById[ player.id ] = player
-                table.insert( Server.playerIds, player.id )
-            else
-                -- Not allowed to connect
-
-                -- ideally should send a player message with the reason for disconnect
-                --self.gameObject.networkSync:SendMessageToPlayers( "OnDisconnected", { reason = "Server full" }, { player.id } )
-                
-                CS.Network.Server.DisconnectPlayer( player.id )
-            end
-            
-            print("end on player joined")
+            cprint("Server.OnPlayerJoined", player.id)
+            local data = {
+                serverData = Server.data, -- only playersById is usefull
+                playerId = player.id
+            }
+            self.gameObject.networkSync:SendMessageToPlayers( "OnConnected", data, { player.id } )
         end
     )
+    
     
     -- Called when a player left the server 
     -- because it disconnect itself via CS.Network.Disconnect()
@@ -71,96 +141,149 @@ function Behavior:Awake()
     -- NOT called when the server stops
     CS.Network.Server.OnPlayerLeft( 
         function( playerId )
-            print("Server.OnPlayerLeft", playerId)
+            cprint("Server.OnPlayerLeft", playerId)
             
-            local player = Server.playersById[ playerId ]
-            Server.playersById[ playerId ] = nil
-            table.removevalue( Server.playerIds, playerId )
+            --local player = Server.data.playersById[ playerId ]
+            Server.data.playersById[ playerId ] = nil
+            Server.data.playerIds = table.getkeys( Server.data.playersById )
             
-            self.gameObject.networkSync:SendMessageToPlayers( "OnPlayerDisconnected", { playerId = playerId }, Server.playerIds )
+            self.gameObject.networkSync:SendMessageToPlayers( "SetClientData", { playersById = Server.data.playersById }, Server.data.playerIds )
         end
     )
     
     
-    -- Called when a player is disconnected by the server with CS.Network.Server.DisconnectPlayer() (and on server stop)
+    -- Called when a player is disconnected by the server with CS.Network.Server.DisconnectPlayer() 
+    -- or when the server stops
+    -- or when the client wasn't able to connect
     -- NOT called by CS.Network.Disconnect()
     -- CS.Network.Server.OnPlayerLeft() is called next (but not when the server stops)
-    CS.Network.OnDisconnected( function()
-        print("CS.Network.OnDisconnected", Client.id)
-        Client.Init()
-        --Scene.Load( "Menu/Game Room" )
-    end )
+    CS.Network.OnDisconnected( 
+        function()
+            cprint("CS.Network.OnDisconnected", Client.data.id)
+            --Client.Init()
+            --Scene.Load( "Menus/Server Browser" )
+        end
+    )
 end
 
--- Called from the success callback of CS.Network.Connect() when a player successfully connected to the server
--- Activate a player on the server, send server data and player id to the player and notify other players of a new player
-function Behavior:ActivatePlayerOnServer( data, playerId )
-    print("ActivatePlayerOnServer", playerId )
-    
-    local player = Server.playersById[ playerId ]
-    if player == nil then return end -- when can this happen ? > when ActivatePlayer() is called before CS.Network.Server.OnPlayerJoined() > when can this happend
-       
-    if data.playerName ~= nil then
-        -- check if the name already exists and append the id it's the case
-        for id, player in pairs( Server.playersById ) do
-            print("player name", id, player.name, player.id)
-            if id ~= playerId and player.name == data.playerName then
-                data.playerName = data.playerName .. " " .. player.id
-                print("changin player name")
-                break
-             end
-        end
-        
-        player.name = data.playerName 
+
+function Behavior:SetPlayerData( data, playerId )
+    local player = Server.data.playersById[ playerId ]
+    if player ~= nil then
+        player.activationTimer:Destroy()
+        player.activationTimer = nil
+        player = table.merge( player, data )
     end
     
-    
-    player.isActive = true
-    
-    local clientData = {
-        playersById = Server.playersById,
-        playerIds = Server.playerIds,
-        id = playerId,
-        name = player.name,
-    }
-    
-    self.gameObject.networkSync:SendMessageToPlayers( "SetClientWithDataFromServer", clientData, { playerId } )
-    
-    self.gameObject.networkSync:SendMessageToPlayers( "OnPlayerActivated", { player = player }, Server.playerIds )
-    
-    self.gameObject:SendMessage( "UpdatePlayerList", { player = player } )
+    self.gameObject.networkSync:SendMessageToPlayers( "SetClientData", { playersById = Server.data.playersById }, Server.data.playerIds )
 end
-CS.Network.RegisterMessageHandler( Behavior.ActivatePlayerOnServer, CS.Network.MessageSide.Server )
+CS.Network.RegisterMessageHandler( Behavior.SetPlayerData, CS.Network.MessageSide.Server )
+
+
+
+function Behavior:RegisterAsPlayer( data, playerId )
+    if table.getlength( Server.data.playersById ) < Server.data.maxPlayerCount then
+        player.isActive = false
+        player.name = "Player #" .. player.id
+        if data.name ~= nil then
+            player.name = data.name
+        end
+        --[[player.activationTimer = Tween.Timer(1, function()
+            self.gameObject.networkSync:SendMessageToPlayers( "OnDisconnected", { reason = "Not activated on time." }, { player.id } )
+            CS.Network.Server.DisconnectPlayer( player.id )
+        end]]
+        
+        Server.data.playersById[ player.id ] = player
+        Server.data.playerIds = table.getkeys( Server.data.playersById )
+        
+        self.gameObject.networkSync:SendMessageToPlayers( "OnConnected", { playerId = player.id }, { player.id } )
+    else
+        self.gameObject.networkSync:SendMessageToPlayers( "OnDisconnected", { reason = "Server full" }, { player.id } )
+        CS.Network.Server.DisconnectPlayer( player.id )
+    end
+end
 
 
 --------------------------------------------------------------------------------
+-- Client side
+
+
+-- called by the client to connect to a server
+function Behavior:ConnectClient( data )
+    if data == nil then data = {} end
+
+    Client.Init()
+    if data.ip ~= nil then
+        Client.ipToConnectTo = data.ip
+    end
+    
+    cprint( "ConnectClient() : Connecting client to IP "..Client.ipToConnectTo )
+    
+    CS.Network.Connect( Client.ipToConnectTo, CS.Network.DefaultPort, function()
+        self.gameObject.networkSync:SendMessageToServer( "RegisterAsPlayer" )
+    end )
+end
+
+
+function Behavior:OnConnected( data )
+    Client.isConnected = true
+    cprint( "Client OnConnected" )
+    
+    if data.playerId ~= nil then
+        Client.data.id = data.playerId
+    end
+end
+CS.Network.RegisterMessageHandler( Behavior.OnConnected, CS.Network.MessageSide.Players )
+
+
+
+
+-- called by the client to disconnect itself from a server
+function Behavior:DisconnectClient()
+    if Client.isConnected then
+        CS.Network.Disconnect() -- will call CS.Network.Server.OnPlayerLeft()
+    end
+    cprint("DisconnectClient()")
+    
+    Client.Init()
+    Scene.Load( "Menu/Server Browser" )
+end
+
+-- called by the server just before the player is disconnectd
+-- mainly to notify the client of the reson for the disconnection
+function Behavior:OnDisconnected( data )
+    Client.Init()
+    cprint( "Client OnDisconnected()", data.reason )
+end
+CS.Network.RegisterMessageHandler( Behavior.OnDisconnected, CS.Network.MessageSide.Players )
 
 
 -- Called from ActivatePlayer() on the server when this new player is connected
 -- called on a single player
-function Behavior:SetClientWithDataFromServer( data )
-    print(data.id, "SetClientWithDataFromServer")
-    Client = table.merge( Client, data )
+function Behavior:SetClientData( data )
+    Client.data = table.merge( Client.data, data )
+    if data.playersById ~= nil then
+        Client.data.playerIds = table.getkeys( Client.data.playersById )
+    end
+    cprint("Client SetClientData", Client.data.id)
 end
-CS.Network.RegisterMessageHandler( Behavior.SetClientWithDataFromServer, CS.Network.MessageSide.Players )
+CS.Network.RegisterMessageHandler( Behavior.SetClientData, CS.Network.MessageSide.Players )
 
 
--- Called from ServerActivatePlayer() on the server when a new player is connected and activated
-function Behavior:OnPlayerActivated( data )
-    print(Client.id, "OnPlayerActivated", data.player.id )
-    Client.playersById[ data.player.id ] = data.player
+-- Called from ActivatePlayer() on the server when a new player is connected and activated
+--[[function Behavior:OnPlayerActivated( data )
+    cprint(Client.data.id, "OnPlayerActivated", data.player.id )
+    Client.data.playersById[ data.player.id ] = data.player
 end
 CS.Network.RegisterMessageHandler( Behavior.OnPlayerActivated, CS.Network.MessageSide.Players )
+]]
 
-
-
-function Behavior:OnPlayerDisconnected( data )
-    print(Client.id, "OnPlayerDisconnected", data.playerId )
+-- called from CS.Network.Server.OnPlayerLeft()
+--[[function Behavior:OnPlayerDisconnected( data )
+    cprint(Client.data.id, "OnPlayerDisconnected", data.playerId )
     
-    --Client.playersById[ data.playerId ] = nil
-    
-    
+    --Client.data.playersById[ data.playerId ] = nil
 end
 CS.Network.RegisterMessageHandler( Behavior.OnPlayerDisconnected, CS.Network.MessageSide.Players )
-
+]]
 
