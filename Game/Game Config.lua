@@ -1,61 +1,11 @@
 
 CS.Screen.SetSize( 1000, 680 )
 --CS.Screen.SetResizable( false )
-
 CS.Physics.SetGravity( Vector3:New( 0, -100, 0 ) )
 
 
-function DaneelUserConfig()
-    Server.Init()
-    Client.Init()
-    
-    Daneel.Event.Listen( "OnF1ButtonJustPressed", function()
-        if not Server.isRunning then
-            Server.Start()
-        end
-    end )
-    
-    
-    function table.shift( t, returnKey ) -- remove and return first value
-        local key = nil
-        local value = nil
-
-        if table.isarray( t ) then
-            if #t > 0 then
-                value = table.removevalue( t, 1 )
-                if value ~= nil then
-                    key = 1
-                end
-            end
-        else
-            for k,v in pairs( t ) do
-                key = k
-                value = v
-                break
-            end
-            if key ~= nil then
-                t[ key ] = nil  
-            end
-        end
-        
-        if returnKey then
-            return key, value
-        end
-        return value
-    end
-
-
-    return {
-        textRenderer = {
-            font = "Calibri"
-        },
-        
-        debug = {
-            enableDebug = true,
-            enableStackTrace = false,
-        }
-    }
-end
+ServerBrowserAddress = "http://localhost/CSServerBrowser/index.php"
+ServerBrowserAddress = "http://csserverbrowser.florentpoujol.fr/index.php"
 
 
 --- Level Builder
@@ -94,3 +44,15 @@ GameTypes = {
 }
 
 
+function DaneelUserConfig()
+    return {
+        textRenderer = {
+            font = "Calibri"
+        },
+        
+        debug = {
+            enableDebug = true,
+            enableStackTrace = false,
+        }
+    }
+end

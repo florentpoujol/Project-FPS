@@ -6,7 +6,6 @@ function Behavior:Awake()
     nameInputGO.input.OnUpdate = function( input )
         local name = input.gameObject.textRenderer.text
         Daneel.Storage.Save( "Server Name", name )
-        Server.data.name = name
     end
     nameInputGO.input.OnFocus = function( input )
         if input.isFocused then
@@ -16,15 +15,14 @@ function Behavior:Awake()
         end
     end
     
-    Server.data.name = Daneel.Storage.Load( "Server Name", "default Server Name" )
-    nameInputGO.textRenderer.text = Server.data.name
+    nameInputGO.textRenderer.text = Daneel.Storage.Load( "Server Name", Server.defaultData.name )
         
     -- max players
     local playerInputGO = GameObject.Get( "Max Players.Input" )
     playerInputGO.input.OnUpdate = function( input )
         local count = tonumber( input.gameObject.textRenderer.text )
         Daneel.Storage.Save( "Server Max Players",  count )
-        Server.data.maxPlayerCount = count
+        --Server.data.maxPlayerCount = count
     end
     playerInputGO.input.OnFocus = function( input )
         if input.isFocused then
@@ -34,8 +32,7 @@ function Behavior:Awake()
         end
     end
     
-    Server.data.maxPlayerCount = Daneel.Storage.Load( "Server Max Players", 12 )
-    playerInputGO.textRenderer.text = Server.data.maxPlayerCount
+    playerInputGO.textRenderer.text = Daneel.Storage.Load( "Server Max Players", Server.defaultData.maxPlayerCount )
     
     -- start/stop button
     local buttonGO = GameObject.Get( "Start-Stop Button" )
@@ -43,16 +40,16 @@ function Behavior:Awake()
     local stopText = "Stop server"
     
     buttonGO.OnClick = function()
-        if Server.isRunning then
-            self:StopServer()
+        if LocalServer ~= nil and LocalServer.isRunning then
+            Server.Stop()
             buttonGO.textRenderer.text = startText
         else
-            self:StartServer()
+            Server.Start()
             buttonGO.textRenderer.text = stopText
         end
     end
     
-    if Server.isRunning then
+    if LocalServer ~= nil and LocalServer.isRunning then
         buttonGO.textRenderer.text = stopText
     else
         buttonGO.textRenderer.text = startText
@@ -68,15 +65,5 @@ function Behavior:Update()
     if CS.Input.WasButtonJustPressed( "Escape" ) then
         Scene.Load( "Menus/Main Menu" )
     end
-end
-
-
-function Behavior:StartServer()
-    Server.Start()
-end
-
-
-function Behavior:StopServer()
-   Server.Stop()
 end
 

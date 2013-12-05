@@ -108,7 +108,13 @@ function Behavior:Awake()
     end
 
     -- /Multi
-
+    
+    -- exit
+    local exitGO = GameObject.Get( "Exit" )
+    exitGO:AddTag( "button" )
+    exitGO.OnClick = function() 
+        CS.Exit()
+    end
     
     -- Hide all sub menus
     --self:ShowSubMenu( nil )

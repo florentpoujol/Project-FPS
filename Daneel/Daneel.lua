@@ -330,14 +330,24 @@ function table.copy( t, recursive, doNotCopyMetatable )
     doNotCopyMetatable = Daneel.Debug.CheckOptionalArgType( doNotCopyMetatable, "doNotCopyMetatable", "boolean", errorHead, false )
     
     local newTable = {}
-    for key, value in pairs( t ) do
-        if type( value ) == "table" and recursive then
-            newTable[ key ] = table.copy( value )
-        else
+    if table.isarray( t ) then
+        -- not sure if it's really necessary to use ipairs() instead of pairs() for arrays
+        -- but better be safe than sorry
+        for key, value in ipairs( t ) do
+            if type( value ) == "table" and recursive then
+                value = table.copy( value )
+            end
+            table.insert( newTable, value )
+        end
+    else
+        for key, value in pairs( t ) do
+            if type( value ) == "table" and recursive then
+                value = table.copy( value )
+            end
             newTable[ key ] = value
         end
     end
-
+    
     if doNotCopyMetatable ~= true then
         local mt = getmetatable( t )
         if mt ~= nil then
@@ -434,12 +444,15 @@ function table.print(t)
     end
     print("~~~~~ table.print("..tableString..") ~~~~~ Start ~~~~~")
 
+    local func = pairs
     if table.getlength(t) == 0 then
         print("Provided table is empty.")
-    else
-        for key, value in pairs(t) do
-            print(key, value)
-        end
+    elseif table.isarray( t ) then
+        func = ipairs -- just to be sure that the entries are printed in order
+    end
+    
+    for key, value in func(t) do
+        print(key, value)
     end
 
     print("~~~~~ table.print("..tableString..") ~~~~~ End ~~~~~")
@@ -451,32 +464,37 @@ end
 -- When several tables have the same value (with an integer key), the value is only added once in the returned table.
 -- @param ... (table) At least two tables to merge together.
 -- @return (table) The new table.
-function table.merge(...)
+function table.merge( ... )
     local arg = {...}
     if arg == nil or #arg == 0 then
-        Daneel.Debug.StackTrace.BeginFunction("table.merge")
-        error("table.merge(...) : No argument provided. Need at least two.")
+        Daneel.Debug.StackTrace.BeginFunction( "table.merge" )
+        error( "table.merge(...) : No argument provided. Need at least two." )
     end
     Daneel.Debug.StackTrace.BeginFunction( "table.merge", ... )
     
     local fullTable = {}
-    for i, t in ipairs(arg) do
-        local argType = type(t)
+    for i, t in ipairs( arg ) do
+        local argType = type( t )
         if argType == "table" then
-            local func = pairs
-            if table.isarray( t ) then 
-                func = ipairs
-            end
-
-            for key, value in func(t) do
-                if math.isinteger(key) and not table.containsvalue(fullTable, value) then
-                    table.insert(fullTable, value)
-                else
-                    fullTable[key] = value
+            if table.isarray( t ) then
+                for key, value in ipairs( t ) do
+                    if not table.containsvalue( fullTable, value ) then
+                        table.insert( fullTable, value )
+                    end
+                end
+            else
+                for key, value in pairs( t ) do
+                    if math.isinteger( key ) then
+                        if not table.containsvalue( fullTable, value ) then
+                            table.insert( fullTable, value )
+                        end
+                    else
+                        fullTable[ key ] = value
+                    end
                 end
             end
         elseif Daneel.Config.debug.enableDebug then
-            print("WARNING : table.merge(...) : Argument n°"..i.." is of type '"..argType.."' with value '"..tostring(t).."' instead of 'table'. The argument as been ignored.")
+            print( "WARNING : table.merge(...) : Argument n°"..i.." is of type '"..argType.."' with value '"..tostring(t).."' instead of 'table'. The argument as been ignored." )
         end
     end
     Daneel.Debug.StackTrace.EndFunction()
@@ -488,42 +506,38 @@ end
 -- When several tables have the same value (with an integer key), the value is only added once in the returned table.
 -- @param ... (table) At least two tables to merge together.
 -- @return (table) The new table.
-function table.deepmerge(...)
+function table.deepmerge( ... )
     local arg = {...}
     if arg == nil or #arg == 0 then
         Daneel.Debug.StackTrace.BeginFunction("table.deepmerge")
-        error("table.deepmerge(...) : No argument provided. Need at least two.")
+        error( "table.deepmerge(...) : No argument provided. Need at least two." )
     end
-    Daneel.Debug.StackTrace.BeginFunction("table.deepmerge", unpack(arg))
+    Daneel.Debug.StackTrace.BeginFunction( "table.deepmerge", ... )
     
     local fullTable = {}
-    for i, t in ipairs(arg) do
-        local argType = type(t)
+    for i, t in ipairs( arg ) do
+        local argType = type( t )
         if argType == "table" then
-            local func = pairs
-            if table.isarray( t ) then 
-                func = ipairs
-            end
-
-            for key, value in func(t) do
-                if math.isinteger(key) and not table.containsvalue(fullTable, value) then
-                    table.insert(fullTable, value)
+            for key, value in pairs(t) do
+                if math.isinteger( key ) then
+                    if table.containsvalue( fullTable, value ) then
+                        table.insert( fullTable, value )
+                    end
                 else
-                    if fullTable[key] ~= nil and type(value) == "table" then
-                        local mt = getmetatable(fullTable[key])
+                    if fullTable[ key ] ~= nil and type( value ) == "table" then
+                        local mt = getmetatable( fullTable[ key ] )
                         if mt ~= nil then -- consider the value an intance of an object, just replace the instance
-                            fullTable[key] = value
+                            fullTable[ key ] = value
                         else
-                            fullTable[key] = table.deepmerge(fullTable[key], value)
+                            fullTable[ key ] = table.deepmerge( fullTable[ key ], value )
                         end
                     else
-                        fullTable[key] = value
+                        fullTable[ key ] = value
                     end
                 end
             end
-
         elseif Daneel.Config.debug.enableDebug then
-            print("WARNING : table.deepmerge(...) : Argument n°"..i.." is of type '"..argType.."' with value '"..tostring(t).."' instead of 'table'. The argument as been ignored.")
+            print( "WARNING : table.deepmerge(...) : Argument n°"..i.." is of type '"..argType.."' with value '"..tostring(t).."' instead of 'table'. The argument as been ignored." )
         end
     end
     Daneel.Debug.StackTrace.EndFunction()
@@ -768,18 +782,26 @@ end
 --- Tell wether he provided table is an array (has only integer keys).
 -- Decimal numbers with only zeros after the coma are considered as integers.
 -- @param t (table) The table.
+-- @param strict (boolean) [default=true] When false, the function returns true when the table only has integer keys. When true, the function returns true when the table only has integer keys in a single and continuous set.
 -- @return (boolean) True or false.
-function table.isarray( t )
+function table.isarray( t, strict )
     Daneel.Debug.StackTrace.BeginFunction( "table.isarray", t )
     local errorHead = "table.isarray( table ) : "
     Daneel.Debug.CheckArgType( t, "table", "table", errorHead )
-    
+    strict = Daneel.Debug.CheckOptionalArgType( strict, "strict", "boolean", errorHead, true )
+
     local isArray = true
+    local entriesCount = 0
+
     for k, v in pairs( t ) do
-        if type( k ) ~= "number" or not math.isinteger( k ) then
+        entriesCount = entriesCount + 1
+        if isArray and ( type( k ) ~= "number" or not math.isinteger( k ) ) then
             isArray = false
-            break
         end
+    end
+
+    if isArray and strict then
+        isArray = (entriesCount == #t)
     end
     
     Daneel.Debug.StackTrace.EndFunction()
@@ -802,6 +824,46 @@ function table.reverse( t )
     
     Daneel.Debug.StackTrace.EndFunction()
     return newTable
+end
+
+--- Remove and returns the first value found in the table.
+-- Works for arrays as well as associative tables.
+-- @param t (table) The table.
+-- @param returnKey (boolean) [default=false] If true, return the key and the value instead of just the value.
+-- @return (mixed) The value, or the key and the value (if the returnKey argument is true), or nil.
+function table.shift( t, returnKey )
+    Daneel.Debug.StackTrace.BeginFunction( "table.shift", t, returnKey )
+    local errorHead = "table.shift( table[, returnKey] ) : "
+    Daneel.Debug.CheckArgType( t, "table", "table", errorHead )
+    returnKey = Daneel.Debug.CheckOptionalArgType( returnKey, "returnKey", "boolean", errorHead, false )
+
+    local key = nil
+    local value = nil
+
+    if table.isarray( t ) then
+        if #t > 0 then
+            value = table.removevalue( t, 1 )
+            if value ~= nil then -- should always be ~= nil if #t > 0
+                key = 1
+            end
+        end
+    else
+        for k,v in pairs( t ) do
+            key = k
+            value = v
+            break
+        end
+        if key ~= nil then
+            t[ key ] = nil  
+        end
+    end
+    
+    Daneel.Debug.StackTrace.EndFunction()
+    if returnKey then
+        return key, value
+    else
+        return value
+    end
 end
 
 

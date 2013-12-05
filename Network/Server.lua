@@ -1,141 +1,159 @@
- 
+
+ServerGO = nil -- the game object this script is attached to
+
+LocalServer = nil -- is set with a server instance if the player creates a local server
+
 Server = {
-    interface = nil, -- this gameObject
-    isRunning = false,
-    
     defaultData = {
+        isRunning = false,
+        serverBrowserAddress = nil, -- is set to the server browser address when server exist on it
+        
         ip = "127.0.0.1",
-        id = -1,
+        id = -1, -- the id of a server is given by the server browser
         level = "", --scene path
         
         playersById = {},
         playerIds = {},
-    },
-    data = {
+        
         maxPlayerCount = 12,
-        name = "Server Name",
+        name = "Default Server Name",
     }
 }
-
-function Server.Init()
-    Server.isRunning = false
-    Server.data = table.merge( Server.data, Server.defaultData )
+Server.__index = Server
+Server.__tostring = function( server )
+    return "Server: "..tostring(server.id)..": "..tostring(server.name)..": "..tostring(server.ip)
 end
 
 
-function Server.UpdateServerBrowser( delete )
-    local data = Server.data
+function Server.New( params )
+    local server = table.copy( Server.defaultData )
+    
+    if type( params ) == "table" then
+        server = table.merge( server, params )
+    end
+
+    server.playersById = {}
+    server.playerIds = {}
+    return setmetatable( server, Server )
+end
+
+
+function Server.UpdateServerBrowser( server, delete, callback )
+    local argType = type( delete )
+    if argType == "function" or argType == "userdata" then
+        callback = delete
+        delete = false
+    end
+    
+    local data = table.copy( server, true ) -- recursive
+    
     if delete then
+        data = { id = data.id } -- remove all unnecessary data
         data.deleteFromServerBrowser = true -- only usefull when when == true
     end
     
-    CS.Web.Post( ServerBrowserAddress, data, CS.Web.ResponseType.JSON, function( error, data )
+    local serverBrowserAddress = server.serverBrowserAddress
+    if serverBrowserAddress == nil then
+        serverBrowserAddress = ServerBrowserAddress
+    end
+    
+    CS.Web.Post( serverBrowserAddress, data, CS.Web.ResponseType.JSON, function( error, data )
         local action = "updated"
         if delete then
             action = "deleted"
         end
-            
+        
         if error ~= nil then
-            cprint( "Error "..action.." server on server browser", error )
+            if delete then
+                cprint( "Error while deleting server from server browser : ", error )
+            else
+                cprint( "Error while updating server from server browser : ", error )
+            end
             return
         end
 
         if data ~= nil then
-            if data.id ~= nil then
-                Server.data.id = data.id
-                Server.data.ip = data.ip
+            if data.deleteFromServerBrowser then
+                cprint("Successfully delete server with id "..data.id.." from the server browser.")
+                server.serverBrowserAddress = nil
+                server.id = -1
+                -- leave ip as the server's IP didn't change
+            elseif data.ip ~= nil then
+                cprint("Successfully created/updated server on the server browser : ", data.id, data.ip )
+                server.serverBrowserAddress = serverBrowserAddress
+                server.id = data.id
+                server.ip = data.ip
+            else
+                cprint("Server browser Wut ?")
+                table.print( data )
             end
-            
-            cprint("Successfully "..action.." server on the server browser", Server.data.id, Server.data.ip )
         else
-            cprint("Successfully "..action.." server on the server browser but didn't received data confirmation" )
+            cprint("Successfully did things on the server browser but didn't received data confirmation." )
+        end
+        
+        if callback ~= nil then
+            callback()
         end
     end )
     
 end
 
 
+-- start the local server
 function Server.Start()
-    if Server.isRunning then
+    if LocalServer ~= nil and LocalServer.isRunning then
         cprint("Server.Start() : server is already running")
         return
     end
-    
+
     cprint("Start server")
-    Server.Init()
     CS.Network.Server.Start()
-    Server.isRunning = true
+
+    local server = Server.New()
+    server.isRunning = true
+    server.playersById = {}
+    server.playerIds = {}
+
+    server.name = Daneel.Storage.Load( "Server Name", Server.defaultData.name )    
+    server.maxPlayerCount = Daneel.Storage.Load( "Server Max Players", Server.defaultData.maxPlayerCount )
     
-    Server.UpdateServerBrowser()
+    
+    server:UpdateServerBrowser()   
+    LocalServer = server
 end
 
-function Server.Stop()
-   cprint( "Stop Server" )
-   Server.UpdateServerBrowser( true )
-   
-   CS.Network.Server.Stop()
-   Server.Init()
+
+-- stop the local server
+function Server.Stop( callback )
+    if LocalServer ~= nil and LocalServer.isRunning then
+        cprint( "Stop Server" )
+        CS.Network.Server.Stop()
+        LocalServer.isRunning = false
+        LocalServer.playersById = {}
+        LocalServer.playerIds = {}
+        LocalServer:UpdateServerBrowser( true, callback )
+        LocalServer = nil
+    end
 end
 
 
 local OriginalExit = CS.Exit
 
-function CS.Exit()
-    if Server.isRunning then
-        Server.Stop()
+function CS.Exit()   
+    if LocalServer ~= nil and LocalServer.isRunning then
+        Server.Stop( OriginalExit )
+        -- what we want here is really to remove the server from the server browser
+    else
+        OriginalExit()
     end
-    OriginalExit()
 end
-
-----------------------------------------------------------------------
-
-
-Client = {
-    isConnected = false,
-    ipToConnectTo = "127.0.0.1",
-    ip = "1270.0.1",
-    
-    defaultData = {
-        id = -1,
-        playersById = {},
-        playerIds = {},
-        team = 1,
-        isSpawned = false
-    },
-    data = {
-        name = "Player",
-    }
-}
-
-function Client.Init()
-    Client.isConnected = false
-    Client.data = table.merge( Client.data, Client.defaultData )
-end
-
-function GetIp( o )
-    CS.Web.Get( "http://craftstud.io/ip", nil, CS.Web.ResponseType.Text, function( error, data )
-        if error ~= nil then
-            cprint( "Error getting IP", error )
-            return
-        end
-        
-        if data == nil then
-            cprint("GetIP : no IP returned")
-        else
-            o.ip = data
-            cprint("GetIp : ", data )
-        end
-    end )
-end
-
-GetIp( Client )
 
 
 ----------------------------------------------------------------------
 
 
 function Behavior:Awake()
-    Server.interface = self.gameObject
+    ServerGO = self.gameObject
     self.gameObject.networkSync:Setup( 0 )
 
     
@@ -145,7 +163,7 @@ function Behavior:Awake()
         function( player )
             cprint("Server.OnPlayerJoined", player.id)
             local data = {
-                serverData = Server.data, -- only playersById is usefull
+                serverData = LocalServer,
                 playerId = player.id
             }
             self.gameObject.networkSync:SendMessageToPlayers( "OnConnected", data, { player.id } )
@@ -162,46 +180,37 @@ function Behavior:Awake()
         function( playerId )
             cprint("Server.OnPlayerLeft", playerId)
             
-            --local player = Server.data.playersById[ playerId ]
-            Server.data.playersById[ playerId ] = nil
-            Server.data.playerIds = table.getkeys( Server.data.playersById )
+            -- self.gameObject.networkSync:SendMessageToPlayers( "OnDisconnected", { reason = "Unknow" }, { playerId } )
             
-            self.gameObject.networkSync:SendMessageToPlayers( "SetClientData", { playersById = Server.data.playersById }, Server.data.playerIds )
-        end
-    )
-    
-    
-    -- Called when a player is disconnected by the server with CS.Network.Server.DisconnectPlayer() 
-    -- or when the server stops
-    -- or when the client wasn't able to connect
-    -- NOT called by CS.Network.Disconnect()
-    -- CS.Network.Server.OnPlayerLeft() is called next (but not when the server stops)
-    CS.Network.OnDisconnected( 
-        function()
-            cprint("CS.Network.OnDisconnected", Client.data.id)
-            --Client.Init()
-            --Scene.Load( "Menus/Server Browser" )
+            --local player = LocalServer.playersById[ playerId ]
+            LocalServer.playersById[ playerId ] = nil
+            LocalServer.playerIds = table.getkeys( LocalServer.playersById )
+            
+            self.gameObject.networkSync:SendMessageToPlayers( "SetClientData", { playersById = LocalServer.playersById }, LocalServer.playerIds )
         end
     )
 end
 
-
+--[[
+-- called by a client, mostly to set its player name
 function Behavior:SetPlayerData( data, playerId )
-    local player = Server.data.playersById[ playerId ]
+    local player = LocalServer.playersById[ playerId ]
     if player ~= nil then
-        player.activationTimer:Destroy()
-        player.activationTimer = nil
         player = table.merge( player, data )
     end
     
-    self.gameObject.networkSync:SendMessageToPlayers( "SetClientData", { playersById = Server.data.playersById }, Server.data.playerIds )
+    self.gameObject.networkSync:SendMessageToPlayers( "SetClientData", { playersById = LocalServer.playersById }, LocalServer.playerIds )
 end
 CS.Network.RegisterMessageHandler( Behavior.SetPlayerData, CS.Network.MessageSide.Server )
+]]
 
 
-
+-- called from ConnectClient(), by a client
+-- data mostly hold the client's id, sent to the client by OnPlayerJoined() via OnConnected()
 function Behavior:RegisterAsPlayer( data, playerId )
-    if table.getlength( Server.data.playersById ) < Server.data.maxPlayerCount then
+    if table.getlength( LocalServer.playersById ) < LocalServer.maxPlayerCount then
+        
+        
         player.isActive = false
         player.name = "Player #" .. player.id
         if data.name ~= nil then
@@ -212,12 +221,12 @@ function Behavior:RegisterAsPlayer( data, playerId )
             CS.Network.Server.DisconnectPlayer( player.id )
         end]]
         
-        Server.data.playersById[ player.id ] = player
-        Server.data.playerIds = table.getkeys( Server.data.playersById )
+        LocalServer.playersById[ player.id ] = player
+        LocalServer.playerIds = table.getkeys( LocalServer.playersById )
         
         self.gameObject.networkSync:SendMessageToPlayers( "OnConnected", { playerId = player.id }, { player.id } )
     else
-        self.gameObject.networkSync:SendMessageToPlayers( "OnDisconnected", { reason = "Server full" }, { player.id } )
+        self.gameObject.networkSync:SendMessageToPlayers( "OnDisconnected", { reason = "Server full" }, { playerId } )
         CS.Network.Server.DisconnectPlayer( player.id )
     end
 end
@@ -226,8 +235,99 @@ end
 --------------------------------------------------------------------------------
 -- Client side
 
+Client = {
+    isConnected = false,
+    ipToConnectTo = "127.0.0.1",
+    ip = "1270.0.1",
+    server = nil, -- The server the Client is connected to. Server instance. Set in OnConnected(), unset in Client.Init()
+    
+    defaultData = {
+        id = -1,
+        playersById = {},
+        playerIds = {},
+        team = 1,
+        isSpawned = false
+    },
+    data = { -- player data exchanged with the server
+        name = "Player",
+    }
+}
+
+function Client.Init()
+    Client.isConnected = false
+    Client.server = nil
+    Client.data = table.merge( Client.data, Client.defaultData )
+end
+
+
+-- Cet Client's IP
+function Client.GetIp( callback )
+    CS.Web.Get( "http://craftstud.io/ip", nil, CS.Web.ResponseType.Text, function( error, ip )
+        if error ~= nil then
+            cprint( "Error getting IP", error )
+            return
+        end
+        
+        if ip == nil then
+            cprint("GetIP : no IP returned")
+        else
+            Client.ip = ip
+            cprint("GetIP : ", ip )
+        end
+    end )
+end
+Client.GetIp()
+
+
+-- connect the client to the provided server
+function Server.Connect( server, callback )
+    if callback == nil then
+        callback = function() end
+    end
+    Client.Init()
+    if server.ip ~= nil then
+        cprint("Server.Connect() : Connecting to : ", server )
+        
+        CS.Network.Connect( server.ip, CS.Network.DefaultPort, function()
+            Client.server = server
+            callback()
+        end )
+    else
+        cprint("Server.Connect() : Can't connect because server's ip is nil : ", server )
+    end
+end
+
+
+-- connect the client to the provided ip
+function Client.ConnectToIp( ip, callback )
+    if type( ip ) == "function" then
+        callback = ip
+        ip = nil
+    end
+
+    local server = Server.New()
+    server.ip = ip
+    if server.ip == nil then
+        server.ip = Client.ipToConnectTo
+    end
+    server:Connect( callback )
+end
+
+
+function Client.ConnectAsPlayer( ipOrServer, callback )
+    local server = ipOrServer
+    if type( ipOrServer ) == "string" then
+        server = Server.New()
+        server.ip = ipOrServer
+    end
+    
+    server:Connect( function()
+        self.gameObject.networkSync:SendMessageToServer( "RegisterAsPlayer", { name = Client.data.name } )
+    end )
+end
 
 -- called by the client to connect to a server
+--[[
 function Behavior:ConnectClient( data )
     if data == nil then data = {} end
 
@@ -240,20 +340,20 @@ function Behavior:ConnectClient( data )
     
     CS.Network.Connect( Client.ipToConnectTo, CS.Network.DefaultPort, function()
         
-        self.gameObject.networkSync:SendMessageToServer( "RegisterAsPlayer" )
     end )
 end
+]]
 
-
+-- Called by OnPlayerJoined() on the server
+-- data holds the server data as well as the playerId
 function Behavior:OnConnected( data )
-    Client.isConnected = true
     cprint( "Client OnConnected" )
-    
-    if data.playerId ~= nil then
-        Client.data.id = data.playerId
-    end
+    Client.isConnected = true
+    Client.server = Server.New( data.serverData )
+    Client.data.id = data.playerId
 end
 CS.Network.RegisterMessageHandler( Behavior.OnConnected, CS.Network.MessageSide.Players )
+
 
 
 
@@ -261,13 +361,28 @@ CS.Network.RegisterMessageHandler( Behavior.OnConnected, CS.Network.MessageSide.
 -- called by the client to disconnect itself from a server
 function Behavior:DisconnectClient()
     if Client.isConnected then
-        CS.Network.Disconnect() -- will call CS.Network.Server.OnPlayerLeft()
+        CS.Network.Disconnect() -- will call CS.Network.Server.OnPlayerLeft() but not CS.Network.OnDisconnected()
     end
     cprint("DisconnectClient()")
     
     Client.Init()
     Scene.Load( "Menu/Server Browser" )
 end
+
+
+-- Called when a player is disconnected by the server with CS.Network.Server.DisconnectPlayer() 
+-- or when the server stops
+-- or when the client wasn't able to connect
+-- NOT called by CS.Network.Disconnect()
+-- CS.Network.Server.OnPlayerLeft() is called next (but not when the server stops)
+CS.Network.OnDisconnected( 
+    function()
+        cprint("CS.Network.OnDisconnected", Client.data.id)
+        Client.Init()
+        --Scene.Load( "Menus/Server Browser" )
+    end
+)
+
 
 -- called by the server just before the player is disconnectd
 -- mainly to notify the client of the reson for the disconnection
@@ -278,14 +393,16 @@ end
 CS.Network.RegisterMessageHandler( Behavior.OnDisconnected, CS.Network.MessageSide.Players )
 
 
+
 -- Called from ActivatePlayer() on the server when this new player is connected
 -- called on a single player
 function Behavior:SetClientData( data )
+    cprint("Client SetClientData", Client.data.id)
+    
     Client.data = table.merge( Client.data, data )
     if data.playersById ~= nil then
         Client.data.playerIds = table.getkeys( Client.data.playersById )
-    end
-    cprint("Client SetClientData", Client.data.id)
+    end  
 end
 CS.Network.RegisterMessageHandler( Behavior.SetClientData, CS.Network.MessageSide.Players )
 
@@ -349,6 +466,7 @@ function Behavior:RemoteCallServer( data, playerId )
     self.gameObject.networkSync:SendMessageToPlayers( "RemoteCallClient", newData, { playerId } )
 end
 CS.Network.RegisterMessageHandler( Behavior.RemoteCallServer, CS.Network.MessageSide.Server )
+
 
 function Behavior:RemoteCallClient( data )
     cprint("Behavior:RemoteCallClient()")
