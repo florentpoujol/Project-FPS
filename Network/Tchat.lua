@@ -10,7 +10,7 @@ end
 function Behavior:Start()
     self.input = self.gameObject:GetChild( "Input" ).input
     self.input.OnValidate = function( input )
-        print("OnValidate", self.input )
+        --print("OnValidate", self.input )
         self:SendTextToServer( input.gameObject.textRenderer.text )
     end
     
@@ -42,16 +42,14 @@ CS.Network.RegisterMessageHandler( Behavior.BroadcastText, CS.Network.MessageSid
 
 function Behavior:GetTextFromServer( data )
     local text = data.text
-    if data.senderId ~= Client.id then
-        local player = Client.playersById[ data.senderId ]
+    if data.senderId ~= Client.data.id then
+        local player = Client.data.playersById[ data.senderId ]
         if player == nil then
-            print("player is nil", data.senderId)
-            table.print( Client.playersById )
+            cprint("Tchat:GetTextFromServer() : player is nil", data.senderId, text)
+            table.print( Client.data.playersById )
             return
         end
         text = player.name.." : "..text
-
-
     end
     self.gameObject.console:AddLine( text )
 end

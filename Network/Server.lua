@@ -1,7 +1,11 @@
 
+
+----------------------------------------------------------------------
+-- SERVER SIDE
+
 ServerGO = nil -- the game object this script is attached to
 
-LocalServer = nil -- is set with a server instance if the player creates a local server
+LocalServer = nil -- is set in Server.Start() with a server instance if the player creates a local server (unset in Server.Stop())
 
 Server = {
     defaultData = {
@@ -45,11 +49,11 @@ function Server.UpdateServerBrowser( server, delete, callback )
         delete = false
     end
     
-    local data = table.copy( server, true ) -- recursive
+    local inputData = table.copy( server, true ) -- recursive
     
     if delete then
-        data = { id = data.id } -- remove all unnecessary data
-        data.deleteFromServerBrowser = true -- only usefull when when == true
+        inputData = { id = server.id } -- remove all unnecessary data
+        inputData.deleteFromServerBrowser = true -- only usefull when when == true
     end
     
     local serverBrowserAddress = server.serverBrowserAddress
@@ -57,18 +61,14 @@ function Server.UpdateServerBrowser( server, delete, callback )
         serverBrowserAddress = ServerBrowserAddress
     end
     
-    CS.Web.Post( serverBrowserAddress, data, CS.Web.ResponseType.JSON, function( error, data )
-        local action = "updated"
-        if delete then
-            action = "deleted"
-        end
-        
+    CS.Web.Post( serverBrowserAddress, inputData, CS.Web.ResponseType.JSON, function( error, data )       
         if error ~= nil then
             if delete then
-                cprint( "Error while deleting server from server browser : ", error )
+                cprint( "Error while deleting server from server browser : ", error.message )
             else
-                cprint( "Error while updating server from server browser : ", error )
+                cprint( "Error while updating server from server browser : ", error.message )
             end
+            table.print( inputData )
             return
         end
 
@@ -84,15 +84,17 @@ function Server.UpdateServerBrowser( server, delete, callback )
                 server.id = data.id
                 server.ip = data.ip
             else
-                cprint("Server browser Wut ?")
+                cprint("Server browser error : empty confirmation data, probably nothing happened.")
+                table.print( server )
+                table.print( inputData )
                 table.print( data )
             end
-        else
+        else -- shouldn't happens since the server browser always send at least an empty table
             cprint("Successfully did things on the server browser but didn't received data confirmation." )
         end
         
         if callback ~= nil then
-            callback()
+            callback( server, data, error )
         end
     end )
     
@@ -100,13 +102,13 @@ end
 
 
 -- start the local server
-function Server.Start()
+function Server.Start( callback )
     if LocalServer ~= nil and LocalServer.isRunning then
-        cprint("Server.Start() : server is already running")
+        Alert.SetText( "Server.Start() : server is already running")
         return
     end
 
-    cprint("Start server")
+    Alert.SetText( "Starting server" )
     CS.Network.Server.Start()
 
     local server = Server.New()
@@ -118,7 +120,7 @@ function Server.Start()
     server.maxPlayerCount = Daneel.Storage.Load( "Server Max Players", Server.defaultData.maxPlayerCount )
     
     
-    server:UpdateServerBrowser()   
+    server:UpdateServerBrowser( callback )   
     LocalServer = server
 end
 
@@ -126,7 +128,7 @@ end
 -- stop the local server
 function Server.Stop( callback )
     if LocalServer ~= nil and LocalServer.isRunning then
-        cprint( "Stop Server" )
+        Alert.SetText( "Stopping server" )
         CS.Network.Server.Stop()
         LocalServer.isRunning = false
         LocalServer.playersById = {}
@@ -141,7 +143,7 @@ local OriginalExit = CS.Exit
 
 function CS.Exit()   
     if LocalServer ~= nil and LocalServer.isRunning then
-        Server.Stop( OriginalExit )
+        Server.Stop( function() OriginalExit() end )
         -- what we want here is really to remove the server from the server browser
     else
         OriginalExit()
@@ -233,7 +235,8 @@ end
 
 
 --------------------------------------------------------------------------------
--- Client side
+-- CLIENT SIDE
+
 
 Client = {
     isConnected = false,
@@ -246,12 +249,13 @@ Client = {
         playersById = {},
         playerIds = {},
         team = 1,
-        isSpawned = false
+        isSpawned = false,
     },
     data = { -- player data exchanged with the server
         name = "Player",
     }
 }
+
 
 function Client.Init()
     Client.isConnected = false
@@ -320,9 +324,12 @@ function Client.ConnectAsPlayer( ipOrServer, callback )
         server = Server.New()
         server.ip = ipOrServer
     end
-    
+       
     server:Connect( function()
-        self.gameObject.networkSync:SendMessageToServer( "RegisterAsPlayer", { name = Client.data.name } )
+        ServerGO.networkSync:SendMessageToServer( "RegisterAsPlayer", { name = Client.data.name } )
+        if callback ~= nil then
+            callback()
+        end
     end )
 end
 
@@ -347,10 +354,10 @@ end
 -- Called by OnPlayerJoined() on the server
 -- data holds the server data as well as the playerId
 function Behavior:OnConnected( data )
-    cprint( "Client OnConnected" )
     Client.isConnected = true
     Client.server = Server.New( data.serverData )
     Client.data.id = data.playerId
+    cprint( "Client OnConnected", data.playerId, Client.server )
 end
 CS.Network.RegisterMessageHandler( Behavior.OnConnected, CS.Network.MessageSide.Players )
 

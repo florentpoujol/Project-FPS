@@ -5,25 +5,14 @@ if CS.DaneelModules == nil then
 end  
 CS.DaneelModules[ "Console" ] = Console
 
---[[
-CS.DaneelModules.Console = {
-    object = Console,
-    initFunction = function()   
-    end,
-    
-    priority = 10,
-    loadAfter = { "GUI" }
-} )
-]]
 
 function Console.Load()
     GUI.Console = {}
     GUI.Console.__index = GUI.Console
     
     Daneel.Config.componentObjects.Console = GUI.Console
-    Daneel.Config.objects.Console = GUI.Console
     table.insert( Daneel.Config.componentTypes, "Console" )
-    -- Component.RegisterComponent( type, object )
+    Daneel.Config.objects.Console = GUI.Console   
     
     function GUI.Console.New( gameObject, params )
         local console = setmetatable( {}, GUI.Console )
@@ -122,4 +111,55 @@ function Behavior:Update()
             self.gameObject.transform.localScale = zero
         end
     end
+end
+
+
+------------------------------------------------
+
+
+-- notification area
+-- provide a standarized way to notify player (give him feedback) of something happening
+-- while in-game, this can be done via the tchat instead
+
+Alert = {
+    gameObject = nil,
+    tweener = nil,
+}
+
+function Alert.SetText( text, time )
+    if Alert.gameObject == nil or Alert.gameObject.inner == nil then
+        Alert.gameObject = GameObject.Get( "Alert" )
+    end
+    
+    cprint( text )
+    if Alert.gameObject == nil then
+        return
+    end
+    
+    if Alert.tweener ~= nil then
+        Alert.tweener:Destroy()
+    end
+    
+    Alert.gameObject.child.textRenderer.text = text
+    Alert.gameObject.hud.layer = 2
+    
+    if time == nil then
+        time = 3 -- 3 seconds
+    end
+    if time > 0 then
+        Alert.tweener = Tween.Timer( time, Alert.Hide )
+    end
+end
+
+function Alert.Hide()
+    --cprint("Alert hide")
+    if Alert.gameObject == nil or Alert.gameObject.inner == nil then
+        Alert.gameObject = GameObject.Get( "Alert" )
+    end
+    if Alert.gameObject == nil then
+        return
+    end
+    
+    Alert.tweener = nil
+    Alert.gameObject.hud.layer = -50
 end

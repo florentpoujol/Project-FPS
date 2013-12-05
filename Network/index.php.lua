@@ -1,5 +1,7 @@
+-- code for the server browser
 --[[
 <?php
+// TODO : add a game parameter in files names so that a single server browser can be used for multiple games
 
 function _log( $text ) {
     $text = date_format( date_create(), 'Y-m-d H:i:s' )." : ".$text."\n";
@@ -13,7 +15,7 @@ $get_response = "";
 $query_type = "GET";
 
 while (false !== ($entry = readdir($handle))) {
-    if (substr($entry, -5) == ".json") {
+    if (preg_match("#^server[0-9]+\.json$#i", $entry)) {
         $id = str_replace("server", "", $entry);
         $id = str_replace(".json",  "", $id);
         $id = intval( $id );
@@ -34,7 +36,8 @@ if (!empty($_POST)) {
         if ($id > 0) {
             _log( "Delete server with id ".$id );
             unlink("server".$id.".json");
-            $response = '{"deleteFromServerBrowser":true}';
+            // TODO : should probably test if a file was actually deleted
+            $response = '{"deleteFromServerBrowser":true, "id":'.$id.'}';
         }
     }
     else {
@@ -69,11 +72,15 @@ if (!empty($_POST)) {
         $str_server = json_encode( $server );
         _log( "Write server : ".$str_server );
         file_put_contents( "server".$server["id"].".json", $str_server );
+        // TODO : should probably test if a file was actually created or updated
         $response = '{"id":'.$server["id"].', "ip":"'.$server["ip"].'"}';
     }
 
 } else { // assume GET
-    $response = substr($get_response, 0, strlen($get_response)-1); // removes the last coma
+    $response = $get_response;
+    if (strlen($response) > 0)
+        $response = substr($response, 0, strlen($response)-1); // removes the last coma
+
     $response = "{".$response."}";
 }
 

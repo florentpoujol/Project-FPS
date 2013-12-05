@@ -26,7 +26,7 @@ function Behavior:Awake()
     
     
     -- hud
-    local hudGO = GameObject.Get( "HUD Camera" )
+    local hudGO = Level.hud
     
     self.hud = {}
     self.hud.isOnGroundGO = hudGO:GetChild( "IsOnGround", true )
@@ -140,6 +140,7 @@ function Behavior:Update()
     
     
     -- trail renderer
+    --[[
     if self.frameCount % 5 == 0 then
         local position = self.trailGO.transform.position
         local trailGO = GameObject.New("Trail", {
@@ -166,7 +167,7 @@ function Behavior:Update()
             OnComplete = function() trailGO:Destroy() end        
         } ) 
     end
-       
+    ]]
     
     -- update hud
     if lastIsOnGround ~= self.isOnGround then

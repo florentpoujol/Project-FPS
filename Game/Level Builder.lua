@@ -41,8 +41,9 @@ function Behavior:Awake()
 end
 
 -- Modifiy a map asset by changing the block id at some specified coordinates
+-- this allow to create big chunks of map easily
 -- @param mapRenderer (MapRenderer) The mapRenderer with the map to modify
-
+-- @param data (table)
 function Map.UpdateBlockIDs( map, data )
     if data == nil then
         data = map.levelBuilderBlocks
@@ -89,6 +90,8 @@ function Map.UpdateBlockIDs( map, data )
 end
 
 
+-- scan the map for some block ids and replace them with the specified prefab
+-- as set in the 'entitiesByBlockID' property on the map's tileset
 function MapRenderer.ReplaceEntityBlocks( mapRenderer, min, max )
     local map = mapRenderer:GetMap()
     local tileSet = mapRenderer:GetTileSet()

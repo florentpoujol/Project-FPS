@@ -15,20 +15,6 @@ function Behavior:Awake()
     
     
     -- in-game menu
-    Level.menu = GameObject.Get( "Menu" )
-    Level.menu.Show = function()
-        Level.hud.Hide()
-        Level.menu.transform.localPosition = Vector3(0,0,-5)
-        CS.Input.UnlockMouse()
-        Level.menu.isDisplayed = true
-    end
-    Level.menu.Hide = function()
-        Level.menu.transform.localPosition = Vector3(0,0,999)
-        CS.Input.LockMouse()
-        Level.menu.isDisplayed = false
-    end
-    Level.menu.Hide()
-    
     --
     local go = GameObject.Get( "Suicide" )
     go:AddTag( "mouseinput" )
@@ -46,21 +32,47 @@ function Behavior:Awake()
         cprint( "change team" )
     end
     
-    local go = GameObject.Get( "Spawn" )
-    go:AddTag( "mouseinput" )
-    go.OnClick = function()
-        if not Client.isSpawned then
-           cprint( "spawn" )
+    local spawnGO = GameObject.Get( "Menu.Buttons.Spawn" )
+    spawnGO:AddTag( "mouseinput" )
+    spawnGO.OnClick = function()
+        if not Client.data.isSpawned then
+           --cprint( "spawn" )
            SpawnPlayer()
         end
     end
     
     local go = GameObject.Get( "Disconnect" )
-    go:AddTag( "mouseinput" )
-    go.OnClick = function()
-        cprint( "Disconnect from server" )
-        Client.Disconnect()
+    if Client.isConnected then
+        go:AddTag( "mouseinput" )
+        go.OnClick = function()
+            cprint( "Disconnect from server" )
+            Client.Disconnect()
+        end
+    else
+        go.textRenderer.opacity = 0
     end
+    
+    Level.menu = GameObject.Get( "Menu" )
+    Level.menu.Show = function()
+        Level.hud.Hide()
+        Level.menu.transform.localPosition = Vector3(0,0,-5)
+        CS.Input.UnlockMouse()
+        Level.menu.isDisplayed = true
+        
+        if Client.data.isSpawned then
+            spawnGO.textRenderer.opacity = 0
+        else
+            spawnGO.textRenderer.opacity = 1
+        end
+    end
+    Level.menu.Hide = function()
+        Level.menu.transform.localPosition = Vector3(0,0,999)
+        CS.Input.LockMouse()
+        Level.menu.isDisplayed = false
+    end
+    Level.menu.Hide()
+    
+    
 end
 
 

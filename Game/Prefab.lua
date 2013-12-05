@@ -5,8 +5,8 @@ Multiply boolean False
 --[[
 Replace the current gameObject by the specified prefab
 
-The PrefabNameOrScenePath property may be a scene path or an alias as defined below.
-The alias value may be a scene path or a table that will be mass-set on a newly created gameObject
+The Prefab property may be a scene path or an alias in the Prefabs object as defined below.
+    The alias value may be a scene path or a table that will be mass-set on the game object.
 The scenes must be composed only of a single game object.
     
 
@@ -17,9 +17,11 @@ using the first child's euler angles ans scale as model
 
 Prefabs = {
     -- alias = "scenepath"
+    -- or
     -- alias = table
     
-    spawn1 = { tags = "spawn,team2,dm,tdm,ctf" }
+    spawn1 = { tags = { "spawn", "team1", "dm", "tdm", "ctf", "gizmo" } },
+    spawn2 = { tags = { "spawn", "team1", "dm", "tdm", "ctf", "gizmo" } }
 }
 
 
@@ -27,17 +29,14 @@ function Behavior:Awake()
     if self.Prefab ~= "" then
         local sourceGO = self.gameObject        
         local children = self.gameObject:GetChildren()
-        local positions = { self.gameObject.transform:GetPosition() }
+        local gameObjects = { self.gameObject }
 
         if self.Multiply then
             sourceGO = children[1]
             if sourceGO == nil then
                 return
             end
-            positions = {}
-            for i, child in pairs( children ) do
-                table.insert( positions, child.transform:GetPosition() )
-            end
+            gameObjects = children
         end
         
         local eulerAngles = sourceGO.transform:GetEulerAngles()
@@ -59,26 +58,27 @@ function Behavior:Awake()
             end
         end   
         
-        
-        for i, position in pairs( positions ) do
-            local prefab = nil
+        for i, gameObject in pairs( gameObjects ) do
+            local position = gameObject.transform:GetPosition()
+            
             if scene ~= nil then
-                prefab = CS.AppendScene( scene )
+                gameObject:Destroy()
+                gameObject = CS.AppendScene( scene )
             else
-                prefab = GameObject.New( "Prefab", path )
+                gameObject:Set( path )
             end
             
-            if prefab ~= nil then
-                if prefab.physics ~= nil then
+            if gameObject ~= nil then
+                if gameObject.physics ~= nil then
                     -- what if the object is static ? can't check for BodyType
-                    prefab.physics:WarpPosition( position )
-                    prefab.physics:WarpEulerAngles( eulerAngles )
+                    gameObject.physics:WarpPosition( position )
+                    gameObject.physics:WarpEulerAngles( eulerAngles )
                 else
-                    prefab.transform:SetPosition( position )
-                    prefab.transform:SetEulerAngles( eulerAngles )
+                    gameObject.transform:SetPosition( position )
+                    gameObject.transform:SetEulerAngles( eulerAngles )
                     
                 end
-                prefab.transform:SetLocalScale( localScale )
+                gameObject.transform:SetLocalScale( localScale )
             end
         end
     end

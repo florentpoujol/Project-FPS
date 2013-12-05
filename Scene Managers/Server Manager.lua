@@ -44,7 +44,9 @@ function Behavior:Awake()
             Server.Stop()
             buttonGO.textRenderer.text = startText
         else
-            Server.Start()
+            Server.Start( function( server )
+                Alert.SetText( "Successfully posted on the server browser with id "..server.id )
+            end )
             buttonGO.textRenderer.text = stopText
         end
     end
@@ -54,10 +56,6 @@ function Behavior:Awake()
     else
         buttonGO.textRenderer.text = startText
     end
-    
-    -- player count
-    self.playerCountRndr = GameObject.Get( "PlayerCount" ).textRenderer
-    self.playerCountRndr.text = 0
 end
 
 

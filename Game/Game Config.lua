@@ -4,22 +4,16 @@ CS.Screen.SetSize( 1000, 680 )
 CS.Physics.SetGravity( Vector3:New( 0, -100, 0 ) )
 
 
-ServerBrowserAddress = "http://localhost/CSServerBrowser/index.php"
+--ServerBrowserAddress = "http://localhost/CSServerBrowser/index.php"
 ServerBrowserAddress = "http://csserverbrowser.florentpoujol.fr/index.php"
 
 
 --- Level Builder
+--[[
 CS.FindAsset( "Tile Set 1", "TileSet" ).entitiesByBlockID = {
-    [248] = "", -- CTF spawn team 1
-    [249] = "", -- CTF spawn team 2
-    [250] = "", -- CTF flag team 1
-    [251] = "", -- CTF flag team 2
-    
-    [252] = "", -- TDM spawn team 1
-    [253] = "", -- TDM spawn team 2
-    
-    --[254] = "Entities/DM Spawn",
+    -- [blockId] = "scene path",
 }
+]]
 
 CS.FindAsset( "Test Map", "Map" ).levelBuilderBlocks = {
     {
