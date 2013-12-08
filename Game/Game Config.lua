@@ -18,8 +18,8 @@ CS.FindAsset( "Tile Set 1", "TileSet" ).entitiesByBlockID = {
 CS.FindAsset( "Test Map", "Map" ).levelBuilderBlocks = {
     {
         blockID = 4,
-        min = { x = -20, y = 0, z = -20 },
-        max = { x = 20, y = 0, z = 20 },
+        min = { x = -20, y = 0, z = -40 },
+        max = { x = 20, y = 0, z = 40 },
     }   
 }
 
@@ -39,6 +39,8 @@ GameTypes = {
 
 
 function DaneelUserConfig()
+    
+    
     return {
         textRenderer = {
             font = "Calibri"

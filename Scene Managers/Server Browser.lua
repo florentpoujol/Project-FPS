@@ -10,7 +10,13 @@ function Behavior:Awake()
     
     self.serversListGO = GameObject.Get( "Servers List" )
     --self.serversListGO.textArea.text = ""
-    self:GetServers()
+    
+    if Game.disconnectionReason ~= nil then
+        Alert.SetText( "You have been disconnected for reason : "..Game.disconnectionReason )
+        Game.disconnectionReason = nil
+    else
+        self:GetServers()
+    end
 end
 
 

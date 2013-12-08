@@ -16,10 +16,7 @@ function InitGameType( gt )
         end
     end
 
-    
 
-    Level.menu.Show()
-    
     --
     Level.spawns = {
         GameObject.GetWithTag( { "spawn", "team1" } ),
@@ -84,13 +81,14 @@ function SpawnPlayer()
             break
         end
     end
-       
+    
     -- remove level camera
     Level.levelSpawns[ Client.data.team ].camera:Destroy()
     
     -- spawn the playable character
+    Client.data.isSpawned = true -- do this before spawning the character so that the hud that is shon in the character Awake() is properly displayed
     local playerGO = GameObject.New( CharacterPrefab )
     playerGO.physics:WarpPosition( spawnPos )
-    Client.data.isSpawned = true
+    
 end
 

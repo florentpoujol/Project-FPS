@@ -1,4 +1,5 @@
 
+
 Console = {}
 if CS.DaneelModules == nil then
     CS.DaneelModules = {}
@@ -61,6 +62,7 @@ function Console.Load()
         newLines = table.reverse( newLines )
         
         local text = table.concat( newLines, console.textArea.newLine )
+
         console.textArea.text = text
     end
 end
@@ -73,9 +75,13 @@ local consoleGO = nil
 
 function cprint( ... )
     print( ... )
-    
+      
     if consoleGO == nil or consoleGO.inner == nil then    
         consoleGO = GameObject.Get( "Console" )
+        
+        if consoleGO == nil then
+            consoleGO = GameObject.Get( "Tchat" )
+        end
     end
     
     if consoleGO ~= nil then
@@ -92,7 +98,7 @@ function cprint( ... )
                 line = line .. " , " .. tostring(v)
             end
         end
-        
+
         consoleGO.console:AddLine( line )
     end
 end
@@ -115,8 +121,7 @@ end
 
 
 ------------------------------------------------
-
-
+-- Alert
 -- notification area
 -- provide a standarized way to notify player (give him feedback) of something happening
 -- while in-game, this can be done via the tchat instead
@@ -124,6 +129,7 @@ end
 Alert = {
     gameObject = nil,
     tweener = nil,
+    messages = {},
 }
 
 function Alert.SetText( text, time )
@@ -131,23 +137,34 @@ function Alert.SetText( text, time )
         Alert.gameObject = GameObject.Get( "Alert" )
     end
     
-    cprint( text )
     if Alert.gameObject == nil then
         return
     end
     
+    if time == nil then
+        time = 3 -- 3 seconds
+    end
+    
     if Alert.tweener ~= nil then
-        Alert.tweener:Destroy()
+        -- stores the text for later
+        table.insert( Alert.messages, { text = text, time = time } )
+        return
     end
     
     Alert.gameObject.child.textRenderer.text = text
     Alert.gameObject.hud.layer = 2
     
-    if time == nil then
-        time = 3 -- 3 seconds
-    end
     if time > 0 then
-        Alert.tweener = Tween.Timer( time, Alert.Hide )
+        Alert.tweener = Tween.Timer( time, function()
+            -- OnComplete callback
+            if #Alert.messages > 0 then
+                local msg = table.remove( Alert.messages, 1 )
+                Alert.tweener = nil
+                Alert.SetText( msg.text, msg.time )
+            else
+                Alert.Hide()            
+            end
+        end )
     end
 end
 
@@ -163,3 +180,59 @@ function Alert.Hide()
     Alert.tweener = nil
     Alert.gameObject.hud.layer = -50
 end
+
+
+-----------------------------------------------------------------
+-- Msg
+-- standard interface to store a message to display
+-- msg are taken and displayed by whatever systems (tchat, console, alert, ...) exist on the current scene
+
+Msg = {
+    id = 0,
+    mesages = {},
+}
+ 
+CS.DaneelModules[ "Msg" ] = Msg
+
+function Msg.Awake()
+    -- do this in Awake because event listeners are all removed when a new scene is loaded
+    -- (need a Event.ListenAlways() function for safe listeners) (or a third argument to Listen( msg, listener, destroyOnSceneLoad )
+    Daneel.Event.Listen( "OnNewMsg", cprint )
+    -- "print" is called in cprint
+    -- tchat is also handled in cprint when there is no "Console" game object
+    
+    -- Alert
+    Daneel.Event.Listen( "OnNewMsg", function( ... )
+        if Alert.tweener == nil then
+            
+        end
+    
+        Alert.SetText( table.concat( { ... }, ", " ) )
+    end )
+end
+
+
+-- return the message with the lowest id
+function Msg.Get()
+    local msg = nil
+    local mini = 999999
+    for i, _msg  in pairs( Msg.messages ) do
+        if i < mini then
+            msg = _msg
+            mini = i
+        end
+    end
+    if msg ~= nil then
+        Msg.messages[ mini ] = nil
+    end
+    return msg
+end
+
+
+
+function msg( ... )
+    Msg.id = Msg.id + 1
+    table[ Msg.id ] = { ... }
+    Daneel.Event.Fire( "OnNewMsg", ... )
+end
+

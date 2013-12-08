@@ -14,7 +14,10 @@ updateInterval number 5
 function Behavior:Awake()
     self.gameObject.trigger = self
     self.GameObjectsInRange = {} -- the gameObjects that touches this trigger
-    self.tags = self.tags:split( ",", true )
+    self.tags = string.split( self.tags, "," )
+    for k, v in pairs( self.tags ) do
+        self.tags[ k ] = string.trim( v )
+    end
     self.frameCount = 0
     self.ray = Ray:New()
 end
@@ -25,17 +28,23 @@ function Behavior:Update()
         local triggerPosition = self.gameObject.transform:GetPosition()
         
         if type( self.tags ) == "string" then
-            self.tags = self.tags:split( ",", true )
+            self.tags = string.split( self.tags, "," )
+            for k, v in pairs( self.tags ) do
+                self.tags[ k ] = string.trim( v )
+            end
         end
-    
+        
+        local reindex = false
+        
         for i, tag in pairs( self.tags ) do
             local gameObjects = GameObject.Tags[ tag ]
             if gameObjects ~= nil then
                 
                 for i, gameObject in pairs( gameObjects ) do
                     local gameObject = gameObjects[ i ]
-                    if gameObject.transform == nil then
-                        table.remove( gameObjects, i )
+                    if gameObject.inner == nil then
+                        gameObjects[ i ] = nil
+                        reindex = true
                     elseif gameObject ~= self.gameObject then
 
                         local gameObjectIsInRange = self:IsGameObjectInRange( gameObject, triggerPosition )
@@ -64,6 +73,10 @@ function Behavior:Update()
                     end
                 end
 
+                if reindex then
+                    GameObject.Tags[ tag ] = table.reindex( gameObjects )
+                    reindex = false
+                end
             end
         end
     end
@@ -77,15 +90,19 @@ function Behavior:GetGameObjectsInRange()
     local triggerPosition = self.gameObject.transform:GetPosition()
     
     if type( self.tags ) == "string" then
-        self.tags = self.tags:split( ",", true )
+        self.tags = string.split( self.tags, "," )
+        for k, v in pairs( self.tags ) do
+            self.tags[ k ] = string.trim( v )
+        end
     end
+    
     for i, tag in pairs( self.tags ) do
         local gameObjects = GameObject.Tags[ tag ]
         if gameObjects ~= nil then
 
             for i, gameObject in pairs( gameObjects ) do
                 if 
-                    gameObject.transform ~= nil and gameObject ~= self.gameObject and
+                    gameObject.inner ~= nil and gameObject ~= self.gameObject and
                     self:IsGameObjectInRange( gameObject, triggerPosition ) and
                     not table.containsvalue( gameObjectsInRange, gameObject )
                 then

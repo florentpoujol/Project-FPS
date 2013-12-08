@@ -23,6 +23,8 @@ function Behavior:Awake()
     
     -- spawn HUD
     GameObject.New( "In-Game/HUD" )
+    
+    
 end
 
 
@@ -35,7 +37,7 @@ function Behavior:Start()
             end
         end
     end
-    
+
     InitGameType( Client.gametype )
 end
 

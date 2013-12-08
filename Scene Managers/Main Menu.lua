@@ -1,5 +1,9 @@
 
 function Behavior:Awake()
+    local screenSize = Daneel.Storage.Load( "ScreenSize", CS.Screen.GetSize() )
+    CS.Screen.SetSize( screenSize.x, screenSize.y )
+    
+    
     Client.Init()
     
     self.subMenus = {}
@@ -29,13 +33,13 @@ function Behavior:Awake()
             
             background.modelRenderer.opacity = 0.2
             Daneel.Storage.Save( "PlayerName", playerName )
-            Client.name = playerName
+            Client.data.name = playerName
         end
     end
     
     local playerName = Daneel.Storage.Load( "PlayerName", "Player" )
     inputGO.textRenderer.text = playerName
-    Client.name = playerName
+    Client.data.name = playerName
     
     
     -- Multi
@@ -56,17 +60,17 @@ function Behavior:Awake()
         
         if input.isFocused then
             background.modelRenderer.opacity = 0.5
-            if text == defaultIP then
+            --[[if text == defaultIP then
                 if Client.ipToConnectTo ~= nil then
                     input.gameObject.textRenderer.text = Client.ipToConnectTo
                 else
                     input.gameObject.textRenderer.text = ""
                 end
-            end
+            end]]
             
-        else
+        else -- on loose focus
             background.modelRenderer.opacity = 0.2
-            if text:trim() == "" then -- on loose focus
+            if text:trim() == "" then 
                 input.gameObject.textRenderer.text = defaultIP
             end
         end
@@ -76,15 +80,9 @@ function Behavior:Awake()
     text = subMenu:GetChild( "Join", true )
     text:AddTag( "button" )
     text.OnClick = function()
-        do return end
-        
-        local ipToConnectTo = ipInput.textRenderer.text
-        if #ipToConnectTo:split( "." ) == 4 then -- probably a correct IP
-            Client.ipToConnectTo = ipToConnectTo
-            
-            --Server.interface:SendMessage( "ConnectClient" )
-            --Scene.Load( "Menus/Server Browser" )
-            --cprint( "Join IP "..Client.ipToConnectTo )
+        local ip = ipInput.textRenderer.text
+        if #ip:split( "." ) == 4 then -- probably a correct IP           
+            Client.ConnectAsPlayer( ip, function() Alert.SetText("Client is connected") end )
         else
             -- makes the input flash
             local oldOpacity = background.modelRenderer.opacity
@@ -120,21 +118,6 @@ function Behavior:Awake()
     --self:ShowSubMenu( nil )
     self:ShowSubMenu( subMenu ) -- show multi
     
-    -- start server
-    --[[if not Server.isRunning then
-        Server.Init()
-        CS.Network.Server.Start()
-        Server.isRunning = true
-    end]]
-    
-    local ss = CS.Screen.GetSize()
-    local test = GameObject.Get("Test HUD")
-    local position = Vector2( 10, ss.y - 10 )
-    test:AddComponent( "GUI.Hud", {
-            position = position
-         }
-     )
-
 end -- end Awake()
 
 

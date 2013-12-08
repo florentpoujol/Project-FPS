@@ -258,8 +258,8 @@ function GUI.Toggle.New( gameObject, params )
     gameObject.toggle = toggle
     gameObject:AddTag( "guiComponent" )
 
-    gameObject.OnNewComponent = function()
-        local component = data[1]
+    gameObject.OnNewComponent = function( component )
+
         if component == nil then return end
         local mt = getmetatable( component )
 
@@ -839,7 +839,7 @@ function GUI.Input.New( gameObject, params )
         input.OnTextEntered = function( char )
             if input.isFocused then
                 local charNumber = string.byte( char )
-
+                
                 if charNumber == 8 then -- Backspace
                     local text = gameObject.textRenderer:GetText()
                     input:Update( text:sub( 1, #text - 1 ), true )
@@ -849,9 +849,11 @@ function GUI.Input.New( gameObject, params )
 
                 -- Any character between 32 and 127 is regular printable ASCII
                 elseif charNumber >= 32 and charNumber <= 127 then
+                    
                     if input.characterRange ~= nil and input.characterRange:find( char, 1, true ) == nil then
                         return
                     end
+                    
                     input:Update( char )
                 end
             end
@@ -866,6 +868,9 @@ function GUI.Input.New( gameObject, params )
     gameObject:AddTag( "guiComponent" )
 
     local backgroundGO = gameObject:GetChild( "Background" )
+    if backgroundGO ~= nil and input.focusOnBackgroundClick then
+        backgroundGO:AddTag( "guiComponent" )
+    end
 
     Daneel.Event.Listen( "OnLeftMouseButtonJustPressed",
         function()
@@ -903,12 +908,16 @@ function GUI.Input.Focus( input, state )
 
     if input.isFocused ~= state then
         input.isFocused = state
+        local text = string.trim( input.gameObject.textRenderer:GetText() )
         if state == true then
             CS.Input.OnTextEntered( input.OnTextEntered )
+           
+            if text == input.defaultValue then
+                input.gameObject.textRenderer:SetText( "" )
+            end
         else
             CS.Input.OnTextEntered( nil )
-            local text = input.gameObject.textRenderer:GetText()
-            if input.defaultValue ~= nil and input.defaultValue ~= "" and string.trim( text ) == "" then
+            if input.defaultValue ~= nil and input.defaultValue ~= "" and text == "" then
                 input.gameObject.textRenderer:SetText( input.defaultValue )
             end
         end
@@ -922,6 +931,7 @@ end
 -- @param text (string) The text (often just one character) to add to the current text.
 -- @param replaceText (boolean) [optional default=false] Tell wether the provided text should be added (false) or replace (true) the current text.
 function GUI.Input.Update( input, text, replaceText )
+
     if not type( input ) == "table" or not input.isFocused then
         return
     end
@@ -939,6 +949,7 @@ function GUI.Input.Update( input, text, replaceText )
     if #text > input.maxLength then
         text = text:sub( 1, input.maxLength )
     end
+    
     if oldText ~= text then
         input.gameObject.textRenderer:SetText( text )
         Daneel.Event.Fire( input, "OnUpdate", input )
@@ -1058,7 +1069,7 @@ function GUI.TextArea.SetText( textArea, text )
     if textArea.VerticalAlignment == "middle" then
         offset = lineHeight * linesCount / 2 - lineHeight / 2
     elseif textArea.VerticalAlignment == "bottom" then
-        offset = lineHeight * linesCount
+        offset = lineHeight * (linesCount-1)
     end
 
     for i, line in ipairs( lines ) do

@@ -3,37 +3,47 @@ isNPC boolean False
 /PublicProperties]]
 
 CharacterPrefab = CS.FindAsset( "Entities/Character" )
+CharacterScript = nil
 
 function Behavior:Awake()
     self.gameObject.s = self
+    CharacterScript = self
+       
+    self.gameObject:AddTag( "character" )
     
-    self.gameObject:AddTag( "characters" )
-    
-    CS.Input.LockMouse()
+    --CS.Input.LockMouse()
     
     self.mapGO = GameObject.Get( "Map" )
     self.modelGO = self.gameObject:GetChild( "Model" )
-    self.modelGO:AddTag( "charactersModel" )
+    self.modelGO:AddTag( "characterModel" )
     self.trailGO = self.gameObject:GetChild( "Trail" )
     
     if not self.isNPC then
         self.cameraGO = self.gameObject:GetChild( "Camera" )
         self.camera2GO = self.gameObject:GetChild( "ThirdPersonCamera" )
+        
+        self.camera2GO:Destroy() -- remove secondary camera (was added to test the trail renderer)
+        --[[
         self.camera2GO.camera:SetRenderViewportPosition( 0.6, 0 ) -- right top
         self.camera2GO.camera:SetRenderViewportSize( 0.4, 0.4 )
         self.camera2GO.transform:LookAt( self.gameObject.transform.position )
+        ]]
     end
     
     
     -- hud
+    Level.hudCamera.Recreate() -- recreate so that it is renderer after the player camera and the hud/menu appear over the world
+    
     local hudGO = Level.hud
     
     self.hud = {}
     self.hud.isOnGroundGO = hudGO:GetChild( "IsOnGround", true )
-    self.hud.isFallingGO = hudGO:GetChild( "IsFalling", true )    
+    self.hud.isFallingGO = hudGO:GetChild( "IsFalling", true )
+    self.hud.isFallingGO.textRenderer.text = ""
     self.hud.groundDistance = hudGO:GetChild( "GroundDistance", true )      
     self.hud.damages = hudGO:GetChild( "Damages.Text", true )   
     
+    Level.hud.Show()
     
     -- movements
     self.rotationSpeed = 0.1
@@ -59,18 +69,25 @@ function Behavior:Awake()
     
     self.shootRay = Ray()
     
-    
+    --
+    self.isLocked = true
+    Tween.Timer( 1, function() self.isLocked = false end )
+
     --
     self.frameCount = 0
 end
 
 function Behavior:Start()
     self.lastTrailPosition = self.gameObject.transform.position   
-    
 end
 
 function Behavior:Update()
     if self.isNPC then return end
+    
+    if self.isLocked then 
+        -- stopping the funciton here actually makes the character roll widly on itself
+        return
+    end
     
     self.frameCount = self.frameCount + 1
     
@@ -194,7 +211,7 @@ function Behavior:Shoot()
     
     local hit = self.shootRay:IntersectsMapRenderer( self.mapGO.mapRenderer, true ) -- tue > return raycast hit  
     
-    local characterHit = self.shootRay:Cast( GameObject.GetWithTag( "charactersModel" ), true ) -- tue > sort by distance asc , first = closest 
+    local characterHit = self.shootRay:Cast( GameObject.GetWithTag( "characterModel" ), true ) -- tue > sort by distance asc , first = closest 
     characterHit = characterHit[1]
     
     if 
@@ -232,7 +249,7 @@ function Behavior:Shoot()
     -- 
     if hit.gameObject ~= nil then
         local target = hit.gameObject.parent -- the character root
-        if target ~= nil and target:HasTag( "characters" ) then
+        if target ~= nil and target:HasTag( "character" ) then
             cprint( self.gameObject, "has hit", target , "with damage", self.damage)
             target.s:TakeDamage( self.damage, self.gameObject )
             --Daneel.Event.Fire( hitObject, "TakeDamage" )
@@ -252,5 +269,11 @@ end
 
 function Behavior:Die()
     print( "Player died", self.gameObject )
+    
+    Client.data.isSpawned = false
+    Level.levelSpawns[ Client.data.team ]:AddComponent( "Camera" )
+    Level.hudCamera.Recreate()
+    
+    Level.menu.Show()
     self.gameObject:Destroy()
 end

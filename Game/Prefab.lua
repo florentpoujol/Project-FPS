@@ -21,7 +21,7 @@ Prefabs = {
     -- alias = table
     
     spawn1 = { tags = { "spawn", "team1", "dm", "tdm", "ctf", "gizmo" } },
-    spawn2 = { tags = { "spawn", "team1", "dm", "tdm", "ctf", "gizmo" } }
+    spawn2 = { tags = { "spawn", "team2", "dm", "tdm", "ctf", "gizmo" } }
 }
 
 
