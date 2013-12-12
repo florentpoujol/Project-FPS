@@ -4,8 +4,6 @@ function Behavior:Awake()
     CS.Screen.SetSize( screenSize.x, screenSize.y )
     
     
-    Client.Init()
-    
     self.subMenus = {}
     
     
@@ -33,13 +31,13 @@ function Behavior:Awake()
             
             background.modelRenderer.opacity = 0.2
             Daneel.Storage.Save( "PlayerName", playerName )
-            Client.data.name = playerName
+            Player.name = playerName
         end
     end
     
     local playerName = Daneel.Storage.Load( "PlayerName", "Player" )
     inputGO.textRenderer.text = playerName
-    Client.data.name = playerName
+    Player.name = playerName
     
     
     -- Multi
@@ -117,7 +115,7 @@ function Behavior:Awake()
     -- Hide all sub menus
     --self:ShowSubMenu( nil )
     self:ShowSubMenu( subMenu ) -- show multi
-    
+
 end -- end Awake()
 
 

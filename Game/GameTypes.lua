@@ -1,12 +1,17 @@
 
-function InitGameType( gt )
+function InitGametype( gt )
     if gt == nil then
         gt = "dm"
     end
     Game.gametype = gt
     
+    local server = Client.server or LocalServer
+    if server ~= nil then
+        server.gametype = gt
+    end
+    
     -- remove all gameObject than don't have the current's gametype tag
-    for short, full in pairs( GameTypes ) do
+    for short, full in pairs( Gametypes ) do
         if short ~= gt then
             for i, go in pairs( GameObject.GetWithTag( short ) ) do
                 if not go:HasTag( gt ) then
@@ -31,21 +36,31 @@ function InitGameType( gt )
     -- remove the camera component on the other team's level spawn
     -- so that the player "spawn" in its level spawn
     -- (the character is not spawned yet, but the player sees the level throught the camera on the level spawn)
+    local serverAdminGO = nil
     for i, gameObject in pairs( GameObject.GetWithTag( "levelspawn" ) ) do
-        if not gameObject:HasTag( "team"..Client.data.team ) then
+        if not gameObject:HasTag( "team"..Client.player.team ) then
             --cprint("destroy camera on go", Client.data.team, gameObject )
             gameObject.camera:Destroy()
+        else
+            serverAdminGO = gameObject
         end
+    end
+    
+    if LocalServer then
+        serverAdminGO:AddComponent( "Game/Camera Control", {
+            moveOriented = true,
+            moveSpeed = 1, -- default = 0.2 = very slow on the big test map
+        } )
     end
 end
 
 
 
 function SpawnPlayer()
-    local spawns = Level.spawns[ Client.data.team ]
+    local spawns = Level.spawns[ Client.player.team ]
     local spawnCount = #spawns
     if spawnCount < 1 then
-        cprint( "SpawnPlayer() : spawnCount="..spawnCount, Client.data.team )
+        cprint( "SpawnPlayer() : spawnCount="..spawnCount, Client.player.team )
         return
     end
     
@@ -57,7 +72,8 @@ function SpawnPlayer()
     local loopCount = 0
     local spawnPos = nil
     
-    while true do
+    -- find a spawn without another player too close
+    repeat
         loopCount = loopCount + 1
         
         local rand = math.floor( math.randomrange( 1, spawnCount + 0.99 ) )
@@ -76,17 +92,14 @@ function SpawnPlayer()
                 break            
             end            
         end
-        
-        if not tooClose then
-            break
-        end
-    end
+    
+    until not tooClose
     
     -- remove level camera
-    Level.levelSpawns[ Client.data.team ].camera:Destroy()
+    Level.levelSpawns[ Client.player.team ].camera:Destroy()
     
     -- spawn the playable character
-    Client.data.isSpawned = true -- do this before spawning the character so that the hud that is shon in the character Awake() is properly displayed
+    Client.player.isSpawned = true -- do this before spawning the character so that the hud that is shon in the character Awake() is properly displayed
     local playerGO = GameObject.New( CharacterPrefab )
     playerGO.physics:WarpPosition( spawnPos )
     

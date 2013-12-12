@@ -37,7 +37,17 @@ function Behavior:Start()
             end
         end
     end
-
-    InitGameType( Client.gametype )
+    
+    local gt = Game.gametype
+    local server = Client.server or LocalServer
+    if server ~= nil then
+        gt = server.gametype
+    end
+    InitGametype( gt )
+    
+    if Client.isConnected then
+        Client.player.isReady = true -- set to false in Server:LoadLevel()
+        ServerGO.networkSync:SendMessageToServer( "MarkPlayerReady" ) -- now that the scene is fully loaded set ready to begin receiving game status update
+    end
 end
 

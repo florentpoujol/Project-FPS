@@ -56,7 +56,6 @@ function Behavior:Awake()
         function() self.update = true end
     )
 
-
     Daneel.Debug.StackTrace.EndFunction()
 end
 

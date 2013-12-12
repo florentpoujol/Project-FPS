@@ -3,12 +3,12 @@ isNPC boolean False
 /PublicProperties]]
 
 CharacterPrefab = CS.FindAsset( "Entities/Character" )
-CharacterScript = nil
+CharacterScript = nil -- used in HUD
 
 function Behavior:Awake()
     self.gameObject.s = self
-    CharacterScript = self
-       
+    
+    
     self.gameObject:AddTag( "character" )
     
     --CS.Input.LockMouse()
@@ -16,34 +16,8 @@ function Behavior:Awake()
     self.mapGO = GameObject.Get( "Map" )
     self.modelGO = self.gameObject:GetChild( "Model" )
     self.modelGO:AddTag( "characterModel" )
-    self.trailGO = self.gameObject:GetChild( "Trail" )
-    
-    if not self.isNPC then
-        self.cameraGO = self.gameObject:GetChild( "Camera" )
-        self.camera2GO = self.gameObject:GetChild( "ThirdPersonCamera" )
-        
-        self.camera2GO:Destroy() -- remove secondary camera (was added to test the trail renderer)
-        --[[
-        self.camera2GO.camera:SetRenderViewportPosition( 0.6, 0 ) -- right top
-        self.camera2GO.camera:SetRenderViewportSize( 0.4, 0.4 )
-        self.camera2GO.transform:LookAt( self.gameObject.transform.position )
-        ]]
-    end
-    
-    
-    -- hud
-    Level.hudCamera.Recreate() -- recreate so that it is renderer after the player camera and the hud/menu appear over the world
-    
-    local hudGO = Level.hud
-    
-    self.hud = {}
-    self.hud.isOnGroundGO = hudGO:GetChild( "IsOnGround", true )
-    self.hud.isFallingGO = hudGO:GetChild( "IsFalling", true )
-    self.hud.isFallingGO.textRenderer.text = ""
-    self.hud.groundDistance = hudGO:GetChild( "GroundDistance", true )      
-    self.hud.damages = hudGO:GetChild( "Damages.Text", true )   
-    
-    Level.hud.Show()
+    --self.trailGO = self.gameObject:GetChild( "Trail" )
+    self.cameraGO = self.gameObject:GetChild( "Camera" )
     
     -- movements
     self.rotationSpeed = 0.1
@@ -65,33 +39,132 @@ function Behavior:Awake()
     self.maxDamage = 10 -- not necessarilly equal to self.maxHealth
     self.chargeFrame = 0
     self.maxChargeFrame = 120 -- time in frames to reach max charge
+    self.lastDamage = 0 -- ?
     -- players can hold the left mouse button to "charge" the laser and do more than 1 damage
     
     self.shootRay = Ray()
     
     --
+    self.frameCount = 0
+    self.isLocked = true
+    
+    if not self.isNPC then
+        CharacterScript = self
+        self:SetupPlayableCharacter()
+    end
+    
+    if self.playerId == nil then
+        self.playerId = -1
+    end
+    
+end
+
+
+function Behavior:SetupPlayableCharacter()
+    -- hud
+    Level.hudCamera.Recreate() -- recreate so that it is renderer after the player camera and the hud/menu appear over the world
+    
+    local hudGO = Level.hud
+    
+    self.hud = {}
+    self.hud.isOnGroundGO = hudGO:GetChild( "IsOnGround", true )
+    self.hud.isFallingGO = hudGO:GetChild( "IsFalling", true )
+    self.hud.isFallingGO.textRenderer.text = ""
+    self.hud.groundDistance = hudGO:GetChild( "GroundDistance", true )      
+    self.hud.damages = hudGO:GetChild( "Damages.Text", true )   
+    
+    Level.hud.Show()
+    
     self.isLocked = true
     Tween.Timer( 1, function() self.isLocked = false end )
-
-    --
-    self.frameCount = 0
 end
+
 
 function Behavior:Start()
-    self.lastTrailPosition = self.gameObject.transform.position   
+    --self.lastTrailPosition = self.gameObject.transform.position
+    if LocalServer then
+        self.isNPC = false
+        LocalServer.playersById[ self.playerId ].characterGO = self.gameObject
+    end
 end
 
+
 function Behavior:Update()
-    if self.isNPC then return end
-    
-    if self.isLocked then 
+    if self.isNPC then 
         -- stopping the funciton here actually makes the character roll widly on itself
         return
     end
     
     self.frameCount = self.frameCount + 1
     
+    local server = Client.server or LocalServer
+    
+    local playerId = Client.player.id
+    if LocalServer then
+        playerId = self.playerId
+    end
+    
+    local player = nil
+    if server ~= nil then
+        player = server.playersById[ playerId ]
+    end
+    -- when offline, server and player are nil
+    
+    -------------------
+    
+    local input = {
+        spaceWasJustPressed = false,
+        leftMouseWasJustPressed = false,            
+        verticalAxis = 0,
+        horizontalAxis = 0,
+        mouseDelta = {x=0,y=0},
+    }
+    
+    if Client.isConnected then -- client online
+        input = {
+            -- sends the raw input, let the server check for other conditions
+            spaceWasJustPressed = CS.Input.WasButtonJustPressed( "Space" ),
+            leftMouseWasJustPressed = CS.Input.WasButtonJustPressed( "LeftMouse" ),            
+            verticalAxis = CS.Input.GetAxisValue( "Vertical" ),
+            horizontalAxis = CS.Input.GetAxisValue( "Horizontal" ),
+            mouseDelta = CS.Input.GetMouseDelta(),
+        }
+        if 
+            input.spaceWasJustPressed == true or
+            input.leftMouseWasJustPressed == true or
+            input.verticalAxis ~= 0 or
+            input.horizontalAxis ~= 0 or
+            input.mouseDelta.x ~= 0 or
+            input.mouseDelta.y ~= 0
+        then
+            ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = input } )
+        end
+        
+        return
+    
+    elseif LocalServer then -- server
+        input = player.input 
+        -- player.input has been set in Server:SetCharacterInput()
+        if input ~= nil then
+            player.input = nil -- player.input will stays nil as long as Server:SetCharacterInput() isn't called (as long as the player don't do any input)    
+        else
+            return -- if it makes the character rolls over on itself, just keep going with befault input instead of return (same for Clients)
+        end
+            
+    elseif not self.isLocked then -- client offline
+        input = {
+            spaceWasJustPressed = CS.Input.WasButtonJustPressed( "Space", {"tchatfocused", "menudisplayed"}, false ),
+            leftMouseWasJustPressed = CS.Input.WasButtonJustPressed( "LeftMouse", {"tchatfocused", "menudisplayed"}, false ),            
+            verticalAxis = CS.Input.GetAxisValue( "Vertical", {"tchatfocused", "menudisplayed"}, false ),
+            horizontalAxis = CS.Input.GetAxisValue( "Horizontal", {"tchatfocused", "menudisplayed"}, false ),
+            mouseDelta = CS.Input.GetMouseDelta(),
+        }
+    end
+    
+    -------------------
+    
     -- Movement code mostly ripped from the Character Control script of the Sky Arena project (7DFPS 2013)  
+    
     -- Jumping
     local bottomRay = Ray:New( self.gameObject.transform:GetPosition(), -Vector3:Up() )
     
@@ -103,12 +176,13 @@ function Behavior:Update()
         self.isOnGround = true
     end
     
-    if self.isOnGround and CS.Input.WasButtonJustPressed( "Space" ) then
+    if self.isOnGround and input.spaceWasJustPressed then
         --print("jump", self.jumpSpeed )
         self.gameObject.physics:ApplyImpulse( Vector3:New( 0, self.jumpSpeed, 0 ) )
         
         self.isOnGround = false
     end
+        
     
     local velocity = self.gameObject.physics:GetLinearVelocity()
     
@@ -122,8 +196,8 @@ function Behavior:Update()
     self.gameObject.transform:SetLocalEulerAngles( Vector3:New( self.angleX, self.angleY, 0 ) )
 
     -- Moving around
-    local vertical = CS.Input.GetAxisValue( "Vertical" )
-    local horizontal = CS.Input.GetAxisValue( "Horizontal" )
+    local vertical = input.verticalAxis
+    local horizontal = input.horizontalAxis
 
     -- Walking forward / backward
     local newVelocity = Vector3:Forward() * vertical * self.walkSpeed
@@ -138,8 +212,8 @@ function Behavior:Update()
     
     
     -- shooting
-    local lastDamage = self.damage
-    if CS.Input.IsButtonDown( "LeftMouse" ) then
+    --[[local lastDamage = self.damage
+    if CS.Input.IsButtonDown( "LeftMouse", {"tchatfocused", "menudisplayed"}, false ) then
         self.chargeFrame = self.chargeFrame + 1
         --if self.chargeFrame > self.maxChargeFrame + 30 then -- player holds the charge button 1/2 second more than necessary
           --  self.chargeFrame = 0
@@ -149,10 +223,14 @@ function Behavior:Update()
         self.damage = math.round( math.clamp( self.damage, 1, self.maxDamage ), 1 )
     end
     
-    if CS.Input.WasButtonJustReleased( "LeftMouse" ) then
+    if CS.Input.WasButtonJustReleased( "LeftMouse", {"tchatfocused", "menudisplayed"}, false ) then
         self:Shoot()
         self.damage = 1
         self.chargeFrame = 0
+    end]]
+    if CS.Input.WasButtonJustPressed( "LeftMouse", {"tchatfocused", "menudisplayed"}, false ) then
+        self.damage = 1
+        self:Shoot()
     end
     
     
@@ -194,14 +272,19 @@ function Behavior:Update()
         self.hud.isFallingGO.textRenderer.text = "WasFalling: "..tostring( self.isFalling )
     end]]
     
-    if lastDamage ~= self.damage then
+    --[[if lastDamage ~= self.damage then
         self.hud.damages.textRenderer.text = "Damages: "..tostring( math.round( self.damage, 1 ) )
-    end
+    end]]
     
     if groundDistance == nil then
         groundDistance = 9999
     end
     self.hud.groundDistance.textRenderer.text = "groundDistance: "..tostring( math.round( groundDistance, 2 ) )
+end
+
+
+function Behavior:UpdateFromServer()
+    
 end
 
 
@@ -235,7 +318,7 @@ function Behavior:Shoot()
     } )
     
     local damage = self.damage - 1 -- -1 to have damage between 0 and 2
-    Draw.LineRenderer.New( lineGO, { endPosition = endPosition, width = math.lerp( 0.1, 2, self.damage / self.maxDamage ) } )
+    Draw.LineRenderer.New( lineGO, { endPosition = endPosition, width = 1 } ) -- width = math.lerp( 0.1, 2, self.damage / self.maxDamage )
     
     Tween.Tweener( {
         target = lineGO.modelRenderer,
@@ -263,15 +346,15 @@ function Behavior:TakeDamage( amount, sourceGO )
     
     if self.health < 0 then
         self:Die()
-        Daneel.Event.Fire( "OnPlayerKilled", { victim = self.gameObject, killer = sourceGO } )
+        --Daneel.Event.Fire( "OnPlayerKilled", { victim = self.gameObject, killer = sourceGO } )
     end
 end
 
 function Behavior:Die()
-    print( "Player died", self.gameObject )
+    cprint( "Player died", self.gameObject )
     
-    Client.data.isSpawned = false
-    Level.levelSpawns[ Client.data.team ]:AddComponent( "Camera" )
+    Client.player.isSpawned = false
+    Level.levelSpawns[ Client.player.team ]:AddComponent( "Camera" )
     Level.hudCamera.Recreate()
     
     Level.menu.Show()

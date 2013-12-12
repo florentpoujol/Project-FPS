@@ -1452,55 +1452,79 @@ end
 
 Daneel.Event = { 
     events = {}, -- emptied when a new scene is loaded in CraftStudio.LoadScene()
+    persistentEvents = {}, -- not emptied
 }
 
 --- Make the provided function or object listen to the provided event(s).
 -- The function will be called whenever the provided event will be fired.
 -- @param eventName (string or table) The event name (or names in a table).
 -- @param functionOrObject (function or table) The function (not the function name) or the object.
-function Daneel.Event.Listen( eventName, functionOrObject )
+-- @param isPersistent (boolean) [default=false] Tell wether the listener automatically stops to listen to any event when a new scene is loaded. Always false when the listener is a game object or a component.
+function Daneel.Event.Listen( eventName, functionOrObject, isPersistent )
     Daneel.Debug.StackTrace.BeginFunction( "Daneel.Event.Listen", eventName, functionOrObject )
     local errorHead = "Daneel.Event.Listen( eventName, functionOrObject ) : "
     Daneel.Debug.CheckArgType( eventName, "eventName", {"string", "table"}, errorHead )
-    Daneel.Debug.CheckArgType( functionOrObject, "functionOrObject", {"table", "function", "userdata"}, errorHead )
+    local listenerType = Daneel.Debug.CheckArgType( functionOrObject, "functionOrObject", {"table", "function", "userdata"}, errorHead )
+    isPersistent = Daneel.Debug.CheckOptionalArgType( isPersistent, "isPersistent", "boolean", errorHead, false )
     
     local eventNames = eventName
     if type( eventName ) == "string" then
         eventNames = { eventName }
     end
     for i, eventName in pairs( eventNames ) do
-        
-        -- check for hotkeys
-        local a,a, buttonName = eventName:find( "^On(.+)ButtonJustPressed$" )
-        if buttonName == nil then
-            a,a, buttonName = eventName:find( "^On(.+)ButtonJustReleased$" )
-        end
-        if buttonName == nil then
-            a,a, buttonName = eventName:find( "^On(.+)ButtonDown$" )
-        end
-
-        if buttonName ~= nil and not table.containsvalue( Daneel.Config.hotKeys, buttonName ) then
-            if not Daneel.isLoaded then
-                Daneel.LateLoad( "Daneel.Event.Listen" )
-            end
-
-            if Daneel.Utilities.ButtonExists( buttonName ) then
-                table.insert( Daneel.Config.hotKeys, buttonName )
-            else
-                if Daneel.Config.debug.enableDebug then
-                    print( errorHead .. "You tried to listen to the '" .. eventName .. "' event but the '" .. buttonName .. "' button does not exists in the Game Controls." )
-                end
-                return
-            end
-        end
-
-        --
         if Daneel.Event.events[ eventName ] == nil then
             Daneel.Event.events[ eventName ] = {}
         end
+        if Daneel.Event.persistentEvents[ eventName ] == nil then
+            Daneel.Event.persistentEvents[ eventName ] = {}
+        end
 
-        if not table.containsvalue( Daneel.Event.events[ eventName ], functionOrObject ) then
-            table.insert( Daneel.Event.events[ eventName ], functionOrObject )
+        if 
+            not table.containsvalue( Daneel.Event.events[ eventName ], functionOrObject ) and 
+            not table.containsvalue( Daneel.Event.persistentEvents[ eventName ], functionOrObject ) 
+        then
+
+            -- check for hotkeys
+            local a,a, buttonName = eventName:find( "^On(.+)ButtonJustPressed$" )
+            if buttonName == nil then
+                a,a, buttonName = eventName:find( "^On(.+)ButtonJustReleased$" )
+            end
+            if buttonName == nil then
+                a,a, buttonName = eventName:find( "^On(.+)ButtonDown$" )
+            end
+
+            if buttonName ~= nil and not table.containsvalue( Daneel.Config.hotKeys, buttonName ) then
+                if not Daneel.isLoaded then
+                    Daneel.LateLoad( "Daneel.Event.Listen" )
+                end
+
+                if Daneel.Utilities.ButtonExists( buttonName ) then
+                    table.insert( Daneel.Config.hotKeys, buttonName )
+                else
+                    if Daneel.Config.debug.enableDebug then
+                        print( errorHead .. "You tried to listen to the '" .. eventName .. "' event but the '" .. buttonName .. "' button does not exists in the Game Controls." )
+                    end
+                    return
+                end
+            end
+
+            -- check that the persisten listener is not a game object or a component (that are always destroyed when the scene loads)
+            if isPersistent and listenerType == "table" then
+                local mt = getmetatable( functionOrObject )
+                if mt ~= nil and (mt == GameObject or table.containsvalue( Daneel.Config.componentObjects, mt )) then
+                    if Daneel.Config.debug.enableDebug then
+                        print( errorHead.."Game objects and components can't be persistent listeners", functionOrObject )
+                    end
+                    isPersistent = false
+                end
+            end
+
+            local eventList = Daneel.Event.events
+            if isPersistent then
+                eventList = Daneel.Event.persistentEvents
+            end
+
+            table.insert( eventList[ eventName ], functionOrObject )
         end
     end
     Daneel.Debug.StackTrace.EndFunction()
@@ -1525,11 +1549,15 @@ function Daneel.Event.StopListen( eventName, functionOrObject )
         eventNames = { eventName }
     end
     if eventNames == nil then
-        eventNames = table.getkeys( Daneel.Event.events )
+        eventNames = table.merge( table.getkeys( Daneel.Event.events ), table.getkeys( Daneel.Event.persistentEvents ) )
     end
 
     for i, eventName in pairs( eventNames ) do
         local listeners = Daneel.Event.events[ eventName ]
+        if listeners ~= nil then
+            table.removevalue( listeners, functionOrObject )
+        end
+        listeners = Daneel.Event.persistentEvents[ eventName ]
         if listeners ~= nil then
             table.removevalue( listeners, functionOrObject )
         end
@@ -1566,15 +1594,23 @@ function Daneel.Event.Fire( object, eventName, ... )
 
     
     local listeners = { object }
-    if object == nil and Daneel.Event.events[ eventName ] ~= nil then
-        listeners = Daneel.Event.events[ eventName ]
+    if object == nil then
+        if Daneel.Event.events[ eventName ] ~= nil then
+            listeners = Daneel.Event.events[ eventName ]
+        end
+        if Daneel.Event.persistentEvents[ eventName ] ~= nil then
+            listeners = table.merge( listeners, Daneel.Event.persistentEvents[ eventName ] )
+        end
     end
 
+    local listenersToBeRemoved = {}
     for i, listener in ipairs( listeners ) do
         
         local listenerType = type( listener )
         if listenerType == "function" or listenerType == "userdata" then
-            listener( unpack( arg ) )
+            if listener( unpack( arg ) ) == false then
+                table.insert( listenersToBeRemoved, listener )
+            end
 
         else -- an object
             local mt = getmetatable( listener )
@@ -1589,8 +1625,9 @@ function Daneel.Event.Fire( object, eventName, ... )
 
                 local _type = type( funcOrMessage )
                 if _type == "function" or _type == "userdata" then
-                    funcOrMessage( unpack( arg ) )
-
+                    if funcOrMessage( unpack( arg ) ) == false then
+                        table.insert( listenersTobeRemoved, listener )
+                    end
                 elseif _type == "string" then
                     message = funcOrMessage
                 end
@@ -1603,6 +1640,10 @@ function Daneel.Event.Fire( object, eventName, ... )
         end
 
     end -- end for listeners
+
+    if #listenersToBeRemoved > 0 then
+        Daneel.Event.StopListen( eventName, listenersToBeRemoved )
+    end
     Daneel.Debug.StackTrace.EndFunction()
 end
 
@@ -3287,6 +3328,7 @@ function GameObject.HasTag( gameObject, tag, atLeastOneTag )
     end
     local hasTags = false
     if atLeastOneTag == true then
+        
         for i, tag in pairs( tags ) do
             if GameObject.Tags[ tag ] ~= nil and table.containsvalue( GameObject.Tags[ tag ], gameObject ) then
                 hasTags = true
@@ -3477,6 +3519,10 @@ function Daneel.Load()
         end
     end
 
+    if type( Camera.ProjectionMode.Orthographic ) == "number" then -- "userdata" in native runtimes
+        CS.IsWebPlayer = true
+    end
+
     Daneel.Debug.StackTrace.BeginFunction( "Daneel.Load" )
 
     -- Load modules 
@@ -3533,17 +3579,13 @@ function Behavior:Awake()
         return
     end
 
-    if tostring( self.gameObject.inner ) == "table" then
-        CS.IsWebPlayer = true
-    end
-
-    if table.getvalue( _G, "LOAD_DANEEL" ) ~= nil and LOAD_DANEEL == false then
+    if table.getvalue( _G, "LOAD_DANEEL" ) ~= nil and LOAD_DANEEL == false then -- just for tests purposes
         return
     end
     
     if Daneel.isAwake then
         if Daneel.Config.debug.enableDebug then
-            print( "Daneel:Awake() : You tried to load Daneel twice ! This time the 'Daneel' scripted behavior was on the " .. tostring( self.gameObject ) )
+            print( "Daneel:Awake() : You tried to load Daneel twice ! This time the 'Daneel' scripted behavior was on " .. tostring( self.gameObject ) )
         end
         CS.Destroy( self )
         return
@@ -3584,6 +3626,8 @@ function Behavior:Awake()
         print("~~~~~ Daneel awake ~~~~~")
     end
 
+    Daneel.Event.Fire( "OnAwake" )
+
     Daneel.Debug.StackTrace.EndFunction()
 end 
 
@@ -3604,6 +3648,8 @@ function Behavior:Start()
     if Daneel.Config.debug.enableDebug then
         print("~~~~~ Daneel started ~~~~~")
     end
+
+    Daneel.Event.Fire( "OnStart" )
 
     Daneel.isLateLoading = nil
     Daneel.Debug.StackTrace.EndFunction()

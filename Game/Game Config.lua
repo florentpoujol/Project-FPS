@@ -28,7 +28,8 @@ CS.FindAsset( "Test Map", "Map" ).levelBuilderBlocks = {
 Game = {}
 Level = {}
 
-GameTypes = {
+-- Gametype is always written with a lowercase t
+Gametypes = {
     -- short = full
     dm = "Death Match",
     tdm = "Team Death Match",
@@ -48,7 +49,7 @@ function DaneelUserConfig()
         
         debug = {
             enableDebug = true,
-            enableStackTrace = false,
+            enableStackTrace = true,
         }
     }
 end

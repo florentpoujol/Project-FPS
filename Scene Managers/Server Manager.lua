@@ -11,12 +11,14 @@ function Behavior:Awake()
         if input.isFocused then
             input.gameObject.child.modelRenderer.opacity = 0.5
         else
+            Server.localData.name = input.gameObject.textRenderer.text
+            self:SaveServerData()
             input.gameObject.child.modelRenderer.opacity = 0.2        
         end
     end
         
-    nameInputGO.textRenderer.text = "Default Server Name"
-        
+    nameInputGO.textRenderer.text = Server.localData.name
+    
     -- max players
     local playerInputGO = GameObject.Get( "Max Players.Input" )
     playerInputGO.input.OnValidate = function( input )
@@ -27,17 +29,19 @@ function Behavior:Awake()
         if input.isFocused then
             input.gameObject.child.modelRenderer.opacity = 0.5
         else
+            Server.localData.maxPlayerCount = tonumber( input.gameObject.textRenderer.text )
+            self:SaveServerData()
             input.gameObject.child.modelRenderer.opacity = 0.2        
         end
     end
     
-    playerInputGO.textRenderer.text = 10
+    playerInputGO.textRenderer.text = Server.localData.maxPlayerCount
     
     
     -- private (private servers don't shows up in the server browser)
     local privateToggle = GameObject.Get( "Private.Toggle" )
     privateToggle:AddComponent( "GUI.Toggle", {
-        isChecked = false, -- false = no, true = yes
+        isChecked = Server.localData.isPrivate, -- false = no, true = yes
         text = "Is Private",
         checkedMark =  "Yes  :text",
         uncheckedMark = "No  :text",
@@ -47,29 +51,52 @@ function Behavior:Awake()
         self:SaveServerData()
     end
     
+    -- initial scene
+    local levelInputGO = GameObject.Get( "Initial Level.Input" )
+    levelInputGO.input.OnValidate = function( input )
+        Server.localData.initialScene = input.gameObject.textRenderer.text
+        self:SaveServerData()        
+    end
+    levelInputGO.input.OnFocus = function( input )
+        if input.isFocused then
+            input.gameObject.child.modelRenderer.opacity = 0.5
+        else
+            Server.localData.initialScene = input.gameObject.textRenderer.text
+            self:SaveServerData()
+            input.gameObject.child.modelRenderer.opacity = 0.2        
+        end
+    end
+        
+    levelInputGO.textRenderer.text = Server.localData.initialScene
+    
     
     -- load saved data
     Daneel.Storage.Load( "PFPS_ServerData", function( value, error ) 
         if value == nil then
             msg( "ERROR : Unable to load server data." )
+            -- always happens the first time
             return
         end
         
-        msg( "Loaded server data" )
+        --msg( "Loaded server data" )
         if value.name == nil then
-            value.name = "Default Server Data"
+            value.name = Server.localData.name
         end
         if value.maxPlayerCount == nil then
-            value.maxPlayerCount = 10
+            value.maxPlayerCount = Server.localData.maxPlayerCount
         end
         if value.isPrivate == nil then
-            value.isPrivate = false
+            value.isPrivate = Server.localData.isPrivate
+        end
+        if value.initialScene == nil then
+            value.initialScene = Server.localData.initialScene
         end
         
         Server.localData = value
         nameInputGO.textRenderer.text = value.name
         playerInputGO.textRenderer.text = value.maxPlayerCount
         privateToggle.toggle:Check( value.isPrivate )
+        levelInputGO.textRenderer.text = value.initialScene
     end )
     
     
@@ -79,6 +106,8 @@ function Behavior:Awake()
     local stopText = "Stop server"
     
     buttonGO.OnClick = function()
+        self:SaveServerData()
+        
         if LocalServer then
             Server.Stop( function( server, data )
                 if data and data.deleteFromServerBrowser then
@@ -114,12 +143,11 @@ end
 
 
 function Behavior:SaveServerData()
-    cprint("save server data")
     Daneel.Storage.Save( "PFPS_ServerData", Server.localData, function( error )
         if error ~= nil then
             msg( "Unable to save server data : can't write data" )
         else
-            msg( "Server data saved successfully" )
+            msg( "Server data saved successfully." )
         end
     end )
 end

@@ -15,23 +15,25 @@ function Behavior:Awake()
     Level.hud.Show = function()
         Level.menu.Hide()
         
-        if Client.data.isSpawned then
+        if Client.player.isSpawned then
             Level.hud.transform.localPosition = Vector3(0,0,-5)
             
         end
         Level.hud.isDisplayed = true
+        InputManager.AddTag( "huddisplayed" )
     end
     Level.hud.Hide = function()
         Level.hud.transform.localPosition = Vector3(0,0,999)
         Level.hud.isDisplayed = false
+        InputManager.RemoveTag( "huddisplayed" )
     end
     Level.hud.Hide()
     
     
     -- in-game menu   
-    local go = GameObject.Get( "Change Team" )
-    go:AddTag( "mouseinput" )
-    go.OnClick = function()
+    local changeTeamGO = GameObject.Get( "Change Team" )
+    changeTeamGO:AddTag( "mouseinput" )
+    changeTeamGO.OnClick = function()
         -- player.Die()
         
         cprint( "change team" )
@@ -40,21 +42,21 @@ function Behavior:Awake()
     local spawnGO = GameObject.Get( "Menu.Buttons.Spawn" )
     spawnGO:AddTag( "mouseinput" )
     spawnGO.OnClick = function()
-        if not Client.data.isSpawned then
+        if not Client.player.isSpawned then
            --cprint( "spawn" )
            SpawnPlayer()
         end
     end
     
-    local go = GameObject.Get( "Disconnect" )
-    go:AddTag( "mouseinput" )
-    go.OnClick = function()
+    local disconnectGO = GameObject.Get( "Disconnect" )
+    disconnectGO:AddTag( "mouseinput" )
+    disconnectGO.OnClick = function()
         Client.Disconnect()
         Scene.Load( "Menus/Main Menu" )
     end
     
     if not Client.isConnected then
-        go.textRenderer.text = "Exit to main menu"
+        disconnectGO.textRenderer.text = "Exit to main menu"
     end
     
     
@@ -67,19 +69,31 @@ function Behavior:Awake()
     
     
         -- update buttons
-        if Client.data.isSpawned then
-            spawnGO.textRenderer.text = "Suicide"
-            spawnGO.OnClick = function()
-                if Client.data.isSpawned then
-                   CharacterScript:Die()
+        if not LocalServer then
+            if Client.player.isSpawned then
+                spawnGO.textRenderer.text = "Suicide"
+                spawnGO.OnClick = function()
+                    if Client.isConnected then
+                        ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = { spawnButtonClicked = true } } )
+                        return
+                    end
+                        
+                    if Client.player.isSpawned then
+                       CharacterScript:Die()
+                    end
                 end
-            end
-        else
-            spawnGO.textRenderer.text = "Spawn"
-            spawnGO.OnClick = function()
-                if not Client.data.isSpawned then
-                   --cprint( "spawn" )
-                   SpawnPlayer() -- in gametype script
+            else
+                spawnGO.textRenderer.text = "Spawn"
+                spawnGO.OnClick = function()
+                    if Client.isConnected then
+                        ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = { spawnButtonClicked = true } } )
+                        return
+                    end
+                    
+                    if not Client.player.isSpawned then
+                       --cprint( "spawn" )
+                       SpawnPlayer() -- in gametype script
+                    end
                 end
             end
         end
@@ -91,6 +105,7 @@ function Behavior:Awake()
         Level.menu.transform.localPosition = Vector3(0,0,-5)
         CS.Input.UnlockMouse()
         Level.menu.isDisplayed = true
+        InputManager.AddTag( "menudisplayed" )        
     end
     Level.menu.Hide = function()
         if CharacterScript ~= nil then
@@ -100,6 +115,7 @@ function Behavior:Awake()
         Level.menu.transform.localPosition = Vector3(0,0,999)
         CS.Input.LockMouse()
         Level.menu.isDisplayed = false
+        InputManager.RemoveTag( "menudisplayed" )
     end
     Level.menu.Show()
     
@@ -128,6 +144,14 @@ function Behavior:Awake()
         end
     end
     
+    
+    if LocalServer then
+        changeTeamGO:Destroy()
+        spawnGO:Destroy()
+        disconnectGO:Destroy()
+        
+        -- Server admin use the tchat to control things
+    end
 end
 
 function Behavior:Start()
@@ -140,17 +164,18 @@ function Behavior:Start()
     
     inputGO.input.OnFocus = function( input )
         if input.isFocused then
-            input.gameObject.child.modelRenderer.opacity = 1
-        else
             input.gameObject.child.modelRenderer.opacity = 0.5
-            -- if text is empty, default text automatically put back in
+            InputManager.AddTag( "tchatfocused" )
+        else
+            input.gameObject.child.modelRenderer.opacity = 0.2
+            InputManager.RemoveTag( "tchatfocused" )
         end
     end
 
 end
 
 function Behavior:Update()
-    if CS.Input.WasButtonJustPressed( "Escape" ) then
+    if InputManager.WasButtonJustReleased( "Escape", "tchatfocused", false ) then
         if Level.hud.isDisplayed then
             Level.menu.Show()
         else
