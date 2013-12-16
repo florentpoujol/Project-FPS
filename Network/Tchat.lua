@@ -18,7 +18,7 @@ function Behavior:Awake()
     Tchat.gameObject = self.gameObject
     self.gameObject.tchat = self
     
-    self.gameObject.networkSync:Setup( 1234 )
+    self.gameObject.networkSync:Setup( 1 )
     GUI.Console.New( self.gameObject )
 end
 
@@ -178,13 +178,17 @@ CS.Network.RegisterMessageHandler( Behavior.BroadcastText, CS.Network.MessageSid
 function Behavior:ReceiveText( data )
     local text = data.text
     
-    local server = Client.server or LocalServer
-    
     local playerName = "Server"
     if data.senderId >= 0 then
         playerName = "Player"..data.senderId
     end
     
+    local server = Client.server or LocalServer
+    if server == nil then
+        cprint("server is nil", Client.server, LocalServer, Client.player)
+        table.print(Client.player)
+        return
+    end
     local player = server.playersById[ data.senderId ]
     if player ~= nil then
         if LocalServer ~= nil then

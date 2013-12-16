@@ -1,5 +1,5 @@
 --[[PublicProperties
-isNPC boolean False
+isPlayable boolean False
 /PublicProperties]]
 
 CharacterPrefab = CS.FindAsset( "Entities/Character" )
@@ -7,7 +7,6 @@ CharacterScript = nil -- used in HUD
 
 function Behavior:Awake()
     self.gameObject.s = self
-    
     
     self.gameObject:AddTag( "character" )
     
@@ -48,19 +47,19 @@ function Behavior:Awake()
     self.frameCount = 0
     self.isLocked = true
     
-    if not self.isNPC then
-        CharacterScript = self
+    if not self.isPlayable then
         self:SetupPlayableCharacter()
     end
     
     if self.playerId == nil then
         self.playerId = -1
     end
-    
 end
 
 
 function Behavior:SetupPlayableCharacter()
+    CharacterScript = self -- used in HUD
+    
     -- hud
     Level.hudCamera.Recreate() -- recreate so that it is renderer after the player camera and the hud/menu appear over the world
     
@@ -82,16 +81,16 @@ end
 
 function Behavior:Start()
     --self.lastTrailPosition = self.gameObject.transform.position
-    if LocalServer then
-        self.isNPC = false
-        LocalServer.playersById[ self.playerId ].characterGO = self.gameObject
-    end
+    --[[if LocalServer then 
+        LocalServer.playersById[ self.playerId ].characterGO = self.gameObject -- useless, this is done in Client:PlayerSpawned
+    end]]
 end
 
 
 function Behavior:Update()
-    if self.isNPC then 
+    if not self.isplayable then 
         -- stopping the funciton here actually makes the character roll widly on itself
+        -- because the colider is a sphere
         return
     end
     

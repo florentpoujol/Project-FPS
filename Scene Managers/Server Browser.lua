@@ -110,13 +110,13 @@ function Behavior:BuildServersList( servers )
             serverCount = serverCount + 1
 
             --CS.Network.Disconnect() -- this is too soon to disconnect
-            -- OnConnected isn't called yet and it seems that it causes error when connecting again to the same server
+            -- Client:OnConnected() isn't called yet and it seems that it causes error when connecting again to the same server
             -- when refreshing the server list ?
-            Tween.Timer( 10, o.TestConnect, { durationType = "frame" } )
+            Tween.Timer( 0.2, o.TestConnect )
             
             disconnectTimer:Destroy()
             
-            -- Update the server's list
+            -- Update the server's list            
             self.serversListGO.textArea.text = self.serversListGO.textArea.text .. "#"..server.id.." "..server.name .. "<br>"
             
             for i, textRenderer in ipairs( self.serversListGO.textArea.lineRenderers ) do -- ipairs is important here
@@ -129,15 +129,18 @@ function Behavior:BuildServersList( servers )
                     
                     Daneel.Event.Listen( "OnConnected", go )
                     go.OnConnected = function( _server )
-                        if _server.ip ~= go.server.ip then
+                        --cprint("server browser On Conected", _server, go.server)
+
+                        if _server.id ~= go.server.id then -- don't compare ip here
                             return
                         end
                         -- fired in Server:OnConnected with the data of the recently connected server
                         -- update the text with server's data (name, playerCount, 
                         go.server = _server
                         textRenderer.text = textRenderer.text.." "..#_server.playerIds.."/".._server.maxPlayerCount.." ".._server.scenePath
-                        Daneel.Event.Stop.Listen( "OnConnected", go )
+                        Daneel.Event.StopListen( "OnConnected", go )
                     end
+                    cprint("EventCreated")
                     
                     go:AddTag( "mouseinput" )
                     go.OnMouseEnter = function()

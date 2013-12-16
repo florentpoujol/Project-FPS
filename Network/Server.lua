@@ -233,6 +233,35 @@ function Behavior:Awake()
             end
         end
     )
+    
+    self.frameCount = 0
+end
+
+
+function Behavior:Update()
+    if LocalServer == nil or #LocalServer.playerIds <  1 then
+        return
+    end
+    
+    self.frameCount = self.frameCount + 1
+    
+    if self.frameCount % 2 == 0 then
+        local data = {}
+        data.positionsByPlayerId = {}
+        -- get characters position
+        for id, player in pairs( LocalServer.playersById ) do 
+            if player.characterGO ~= nil then
+                data.positionsByPlayerId[ id ] = player.characterGO.transform.position
+            end
+        end
+        
+        -- others stuffs :
+        -- position of objecive (flag, cart) ?
+        -- state of objectives (height of flag, flag team)
+        -- time until round ends
+        
+        self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", data, LocalServer.playerIds )
+    end
 end
 
 
@@ -250,6 +279,7 @@ function Behavior:RegisterPlayer( data, playerId )
         end
         
         -- choose a team
+        player.team = 1
         local teamCount = { 0, 0 }
         for id, player in pairs( LocalServer.playersById ) do
             teamCount[ player.team ] = teamCount[ player.team ] + 1
@@ -269,7 +299,9 @@ function Behavior:RegisterPlayer( data, playerId )
             scenePath = LocalServer.scenePath,
             gametype = LocalServer.gametype
         }
-        self.gameObject.networkSync:SendMessageToPlayers( "LoadLevel", data, player.id ) 
+        
+        self.gameObject.networkSync:SendMessageToPlayers( "LoadLevel", data, { player.id } ) 
+        
     else
         self:DisconnectPlayer( playerId, "Server full" )
     end
@@ -288,12 +320,22 @@ function Behavior:DisconnectPlayer( id, reason )
 end
 
 
--- Called from the client's Character script
+-- Called from the client's Character script or menus
 -- Data contains the player input
 function Behavior:SetCharacterInput( data, playerId )
     if data.input.spawnButtonClicked then
-        cprint( "Player #"..playerId.." wants to spawn !" )
-        -- check for player.isSpawned and player.characterGO
+        --cprint( "Player #"..playerId.." wants to spawn !" )
+        
+        local player = LocalServer.playersById[ playerId ]
+        if not player.isSpawned and not player.characterGO then
+            local data = {
+                position = GetSpawnPosition( player ),
+                playerId = player.id    
+            }
+            
+            self.gameObject.networkSync:SendMessageToPlayers( "PlayerSpawned", data, LocalServer.playerIds ) -- why not leave player data be broadcasted via Client:UpdateGameState() and let this function creates the game objects ?
+            self.gameObject.client:PlayerSpawned( data )
+        end
     else
         LocalServer.playersById[ playerId ].input = data.input
     end

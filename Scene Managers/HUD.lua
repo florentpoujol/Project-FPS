@@ -41,12 +41,12 @@ function Behavior:Awake()
     
     local spawnGO = GameObject.Get( "Menu.Buttons.Spawn" )
     spawnGO:AddTag( "mouseinput" )
-    spawnGO.OnClick = function()
+    --[[spawnGO.OnClick = function()
         if not Client.player.isSpawned then
            --cprint( "spawn" )
            SpawnPlayer()
         end
-    end
+    end]]
     
     local disconnectGO = GameObject.Get( "Disconnect" )
     disconnectGO:AddTag( "mouseinput" )
@@ -85,6 +85,7 @@ function Behavior:Awake()
             else
                 spawnGO.textRenderer.text = "Spawn"
                 spawnGO.OnClick = function()
+                    
                     if Client.isConnected then
                         ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = { spawnButtonClicked = true } } )
                         return
