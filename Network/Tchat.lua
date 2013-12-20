@@ -101,6 +101,10 @@ AdminCmd = {
         ServerGO.networkSync:SendMessageToPlayers( "LoadLevel", data, LocalServer.playerIds )
         ServerGO.client:LoadLevel( data )
     end,
+    
+    stopserver = function()
+        CS.Exit()
+    end,
 }
 
 

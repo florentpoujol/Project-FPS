@@ -34,13 +34,13 @@ end
 
 function Server.New( params )
     local server = table.copy( Server.defaultData )
+    server.playersById = {}
+    server.playerIds = {}
     
     if type( params ) == "table" then
         server = table.merge( server, params )
     end
 
-    server.playersById = {}
-    server.playerIds = {}
     return setmetatable( server, Server )
 end
 
@@ -154,9 +154,14 @@ function Server.Connect( server, callback )
     Client.Init()
     
     if server.ip ~= nil then
-        cprint("Server.Connect() : Connecting to : ", server )
+        local ip = server.ip
+        if ip == Client.ip then
+            ip = "127.0.0.1"
+        end
+        cprint("Server.Connect() : Connecting to : ", server, " With ip "..ip )
         
-        CS.Network.Connect( server.ip, CS.Network.DefaultPort, function()
+        
+        CS.Network.Connect( ip, CS.Network.DefaultPort, function()
             Client.server = server
             
             if callback ~= nil then
@@ -199,6 +204,12 @@ function Behavior:Awake()
                 server = LocalServer,
                 playerId = player.id,
             }
+            for i, player in pairs( data.server.playersById ) do
+                player.characterGO = nil
+                player.isSpawned = false
+                -- player already spawned will be created in Client:UpdateGameState() if their coordinates are sent by Server:Update()
+                -- only interesting player data at this point is the id and name
+            end
             self.gameObject.networkSync:SendMessageToPlayers( "OnConnected", data, { player.id } )
         end
     )
@@ -245,13 +256,18 @@ function Behavior:Update()
     
     self.frameCount = self.frameCount + 1
     
-    if self.frameCount % 2 == 0 then
+    if self.frameCount % 1 == 0 then
         local data = {}
-        data.positionsByPlayerId = {}
+        data.dataByPlayerId = {}
         -- get characters position
-        for id, player in pairs( LocalServer.playersById ) do 
+        for id, player in pairs( LocalServer.playersById ) do
+            --print("server update player", player, player.id, player.isSpawned, player.characterGO )
             if player.characterGO ~= nil then
-                data.positionsByPlayerId[ id ] = player.characterGO.transform.position
+                data.dataByPlayerId[ id ] = {
+                    position = player.characterGO.transform:GetPosition(),
+                    eulerAngles = player.characterGO.transform:GetEulerAngles(),
+                }
+                --print("send position", data.dataByPlayerId[ id ].position)
             end
         end
         
@@ -260,6 +276,7 @@ function Behavior:Update()
         -- state of objectives (height of flag, flag team)
         -- time until round ends
         
+        --print("server update ", #data.dataByPlayerId )
         self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", data, LocalServer.playerIds )
     end
 end
@@ -280,12 +297,14 @@ function Behavior:RegisterPlayer( data, playerId )
         
         -- choose a team
         player.team = 1
-        local teamCount = { 0, 0 }
-        for id, player in pairs( LocalServer.playersById ) do
-            teamCount[ player.team ] = teamCount[ player.team ] + 1
-        end
-        if teamCount[1] > teamCount[2] then
-            player.team = 2
+        if LocalServer.gametype ~= "dm" then
+            local teamCount = { 0, 0 }
+            for id, player in pairs( LocalServer.playersById ) do
+                teamCount[ player.team ] = teamCount[ player.team ] + 1
+            end
+            if teamCount[1] > teamCount[2] then
+                player.team = 2
+            end
         end
         
         -- the connected player already has the playersById table via "OnConnected"
@@ -320,7 +339,7 @@ function Behavior:DisconnectPlayer( id, reason )
 end
 
 
--- Called from the client's Character script or menus
+-- Called from the client's "Character Control" script or menus
 -- Data contains the player input
 function Behavior:SetCharacterInput( data, playerId )
     if data.input.spawnButtonClicked then
@@ -330,7 +349,7 @@ function Behavior:SetCharacterInput( data, playerId )
         if not player.isSpawned and not player.characterGO then
             local data = {
                 position = GetSpawnPosition( player ),
-                playerId = player.id    
+                playerId = playerId    
             }
             
             self.gameObject.networkSync:SendMessageToPlayers( "PlayerSpawned", data, LocalServer.playerIds ) -- why not leave player data be broadcasted via Client:UpdateGameState() and let this function creates the game objects ?

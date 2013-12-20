@@ -116,12 +116,12 @@ end
 function Behavior:OnConnected( data )
     Client.isConnected = true
     Client.server = Server.New( data.server )
-    Client.server.isUpdated = true
+    Client.server.isUpdated = true -- 20/12  ?
     Client.player = table.copy( Player )
     Client.player.id = data.playerId
     
     Daneel.Event.Fire( "OnConnected", Client.server ) -- "sends" the server data to the server browser
-    --cprint( "Client OnConnected", data.playerId, Client.server )
+    --cprint( "Client OnConnected", data.playerId, Client.server )   
 end
 CS.Network.RegisterMessageHandler( Behavior.OnConnected, CS.Network.MessageSide.Players )
 
@@ -163,15 +163,13 @@ function Behavior:OnPlayerJoined( player )
     local server = Client.server or LocalServer
     server.playersById[ player.id ] = player
     server.playerIds = table.getkeys( server.playersById )
-    
+        
     if player.id ~= Client.player.id then -- On server and Client when the new player is another player
         Tchat.AddLine( "Player #"..player.id.." '"..player.name.."' joined." )
     
     else -- newly connected player
         Client.player = table.merge( player )
-        print("client player joined")
-        table.print(player)
-        table.print(Client.player)
+        
         Daneel.Event.Listen( 
             "OnStart", 
             function()
@@ -251,45 +249,70 @@ CS.Network.RegisterMessageHandler( Behavior.LoadLevel, CS.Network.MessageSide.Pl
 -- Spawn the character
 function Behavior:PlayerSpawned( data )
     local server = Client.server or LocalServer
-    local player = server.playersById[ data.playerId ]
+    
+    local player = Client.player -- offline local
+    if server ~= nil then
+        player = server.playersById[ data.playerId ]
+    end
+    
     player.isSpawned = true
+    
+    if data == nil then -- offline local
+        data = {
+            position = GetSpawnPosition( player ),
+            playerId = -1    
+        }
+    end
     
     local go = GameObject.New( CharacterPrefab )
     go.physics:WarpPosition( data.position )
     go.s.playerId = data.playerId
+    go.s.team = player.team
     player.characterGO = go
     
-    if data.playerId == Client.player.id then
+    if player.id == Client.player.id then
         -- give control of the character to the player
         player.characterGO.s:SetupPlayableCharacter()
-        -- remove level camera
     end
+    
+    cprint(player.name.." ("..player.id..") has spawned")
 end
 CS.Network.RegisterMessageHandler( Behavior.PlayerSpawned, CS.Network.MessageSide.Players )
 
 
 -- Update character and objectives position, + other game states
--- Called by Server:Update() ?
+-- Called by Server:Update()
 -- game object referrenced in data that does not exists yet on this client are created.
 function Behavior:UpdateGameState( data )
+    --print( "clietnn update game state", Client.player.isReady, #data.dataByPlayerId )
     if Client.player.isReady then
         local server = Client.server or LocaServer
             
         if data.dataByPlayerId then
-            for id, data in pairs( data.dataByPlayerId ) do
+        
+            for id, playerData in pairs( data.dataByPlayerId ) do
                 local player = server.playersById[ id ]
                 -- could do   player.characterGO:Set( data.characterGO )   ?
-                
+
                 if player.characterGO ~= nil then
                     
-                    if data.position then
-                        player.characterGO.transform.position = value
-                        -- do the same for Orientation
+                    -- The chaking of the character that happens in the client and not in the server is due to 
+                    -- the local physics that moves the character in between updates from the server (I think).
+                    
+                    -- The rotations from physics have been frozen in the prefab, but we can't froze the positions (at least in Y) or the gravity and jump will ave no effect any more.
+                    -- Could froze all position if we are sure to update each client at least every 2 frames
+                    
+                    if playerData.position then
+                        player.characterGO.physics:WarpPosition( Vector3( playerData.position ) )
                     end
-
+                    
+                    if playerData.eulerAngles then
+                        player.characterGO.physics:WarpEulerAngles( Vector3( playerData.eulerAngles ) )
+                        --player.characterGO.transform:SetEulerAngles( Vector3( playerData.eulerAngles ) ) -- SetEulerAngles() doen't work here, yet it does in "Character Control"
+                    end
                 else
                     self:PlayerSpawn( {
-                        position = data.position,
+                        position = playerData.position,
                         playerId = id,
                     } )
                 end

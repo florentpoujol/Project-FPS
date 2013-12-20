@@ -145,10 +145,13 @@ function Alert.SetText( text, time )
         time = 3 -- 3 seconds
     end
     
-    if Alert.tweener ~= nil then
+    --[[if Alert.tweener ~= nil then
         -- stores the text for later
         table.insert( Alert.messages, { text = text, time = time } )
         return
+    end]]
+    if Alert.tweener ~= nil then
+        Alert.tweener:Destroy()
     end
     
     Alert.gameObject.child.textRenderer.text = text

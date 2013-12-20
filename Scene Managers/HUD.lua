@@ -93,7 +93,7 @@ function Behavior:Awake()
                     
                     if not Client.player.isSpawned then
                        --cprint( "spawn" )
-                       SpawnPlayer() -- in gametype script
+                       ServerGO.client:PlayerSpawned()
                     end
                 end
             end

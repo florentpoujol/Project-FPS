@@ -63,31 +63,7 @@ function Screen.Load()
         return hud
     end
     
-    -- make sure that the components of the provided position are numbers and in pixel
-    -- instead of strings or in percentage or relative to the screensize
-    function GUI.Hud.FixPosition( position ) -- Vector2
-        local screenSize = CS.Screen.GetSize()
-        position = Vector2.New( position )
-        
-        for key, value in pairs( position ) do
-            if value:find( "%", 1, true ) ~= nil then
-                value = screenSize[ key ] * Daneel.Utilities.ToNumber( value ) / 100
-            
-            elseif value:find( "s" ) then  -- ie: "s-50"  =  "screenSize.x - 50px"
-                value = value:sub( 2 )
-                if value == "" then -- value was just "s"
-                    value = 0
-                end
-                value = screenSize[ key ] + tonumber( value )
-            elseif type( value ) == "string" then
-                value = tonumber( value )
-            end
-            
-            position[ key ] = value
-        end
-        
-        return position
-    end
+    
     
     
     local OriginalSetPosition = GUI.Hud.SetPosition

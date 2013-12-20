@@ -129,7 +129,7 @@ function Behavior:BuildServersList( servers )
                     
                     Daneel.Event.Listen( "OnConnected", go )
                     go.OnConnected = function( _server )
-                        --cprint("server browser On Conected", _server, go.server)
+                        --cprint("server browser On Conected", _server, go.server, table.getlength(_server.playerIds))
 
                         if _server.id ~= go.server.id then -- don't compare ip here
                             return
@@ -140,8 +140,7 @@ function Behavior:BuildServersList( servers )
                         textRenderer.text = textRenderer.text.." "..#_server.playerIds.."/".._server.maxPlayerCount.." ".._server.scenePath
                         Daneel.Event.StopListen( "OnConnected", go )
                     end
-                    cprint("EventCreated")
-                    
+                                        
                     go:AddTag( "mouseinput" )
                     go.OnMouseEnter = function()
                         textRenderer.opacity = 0.7

@@ -1,6 +1,7 @@
 --[[PublicProperties
 isPlayable boolean False
 /PublicProperties]]
+-- note : strangely, having the character stretched does not cause issue with the physics
 
 CharacterPrefab = CS.FindAsset( "Entities/Character" )
 CharacterScript = nil -- used in HUD
@@ -47,18 +48,31 @@ function Behavior:Awake()
     self.frameCount = 0
     self.isLocked = true
     
-    if not self.isPlayable then
+    if self.isPlayable then
         self:SetupPlayableCharacter()
     end
     
-    if self.playerId == nil then
+    if self.playerId == nil then -- set in Client:PlayerSpawned()
         self.playerId = -1
+    end
+    
+    if self.team == nil then -- set in Client:PlayerSpawned()
+        self.team = 1
     end
 end
 
 
-function Behavior:SetupPlayableCharacter()
+-- Called from Client:PlayerSpawned() this character is the one the player should control
+-- Never called on the server
+function Behavior:SetupPlayableCharacter() 
     CharacterScript = self -- used in HUD
+    self.isPlayable = true
+    
+    -- remove level spawn camera
+    Level.levelSpawns[ self.team ].camera:Destroy()
+    
+    -- set player camera
+    self.cameraGO:Set( { camera = { fOV = 60 } } )
     
     -- hud
     Level.hudCamera.Recreate() -- recreate so that it is renderer after the player camera and the hud/menu appear over the world
@@ -74,8 +88,9 @@ function Behavior:SetupPlayableCharacter()
     
     Level.hud.Show()
     
+    --    
     self.isLocked = true
-    Tween.Timer( 1, function() self.isLocked = false end )
+    Tween.Timer( 0.5, function() self.isLocked = false end )
 end
 
 
@@ -88,7 +103,7 @@ end
 
 
 function Behavior:Update()
-    if not self.isplayable then 
+    if not self.isPlayable and not LocalServer then 
         -- stopping the funciton here actually makes the character roll widly on itself
         -- because the colider is a sphere
         return
@@ -97,11 +112,7 @@ function Behavior:Update()
     self.frameCount = self.frameCount + 1
     
     local server = Client.server or LocalServer
-    
-    local playerId = Client.player.id
-    if LocalServer then
-        playerId = self.playerId
-    end
+    local playerId = self.playerId -- when offline, self.playerId == -1
     
     local player = nil
     if server ~= nil then
@@ -142,12 +153,13 @@ function Behavior:Update()
         return
     
     elseif LocalServer then -- server
-        input = player.input 
+        
         -- player.input has been set in Server:SetCharacterInput()
-        if input ~= nil then
+        if player.input ~= nil then
+            input = player.input 
             player.input = nil -- player.input will stays nil as long as Server:SetCharacterInput() isn't called (as long as the player don't do any input)    
-        else
-            return -- if it makes the character rolls over on itself, just keep going with befault input instead of return (same for Clients)
+        --else
+            --return -- if it makes the character rolls over on itself, just keep going with befault input instead of return (same for Clients)
         end
             
     elseif not self.isLocked then -- client offline
@@ -168,7 +180,7 @@ function Behavior:Update()
     local bottomRay = Ray:New( self.gameObject.transform:GetPosition(), -Vector3:Up() )
     
     local groundDistance = bottomRay:IntersectsMapRenderer( self.mapGO.mapRenderer ) 
-       
+    
     local lastIsOnGround = self.isOnGround
     self.isOnGround = false
     if groundDistance ~= nil and groundDistance < 6 then
@@ -186,13 +198,14 @@ function Behavior:Update()
     local velocity = self.gameObject.physics:GetLinearVelocity()
     
     -- Rotate the camera when the mouse moves around
-    local mouseDelta = CS.Input.GetMouseDelta()
-
+    local mouseDelta = input.mouseDelta
+    
     self.angleY = self.angleY - self.rotationSpeed * mouseDelta.x
     self.angleX = self.angleX - self.rotationSpeed * mouseDelta.y
     self.angleX = math.clamp( self.angleX, -60, 60 )
 
-    self.gameObject.transform:SetLocalEulerAngles( Vector3:New( self.angleX, self.angleY, 0 ) )
+    self.gameObject.transform:SetEulerAngles( Vector3:New( self.angleX, self.angleY, 0 ) ) -- I think this shouldn't work, but it does
+    --self.gameObject.physics:WarpEulerAngles( Vector3:New( self.angleX, self.angleY, 0 ) ) 
 
     -- Moving around
     local vertical = input.verticalAxis
@@ -264,6 +277,10 @@ function Behavior:Update()
     ]]
     
     -- update hud
+    if LocalServer then
+        return 
+    end
+    
     if lastIsOnGround ~= self.isOnGround then
         self.hud.isOnGroundGO.textRenderer.text = "IsOnGround: "..tostring( self.isOnGround )
     end
@@ -282,9 +299,6 @@ function Behavior:Update()
 end
 
 
-function Behavior:UpdateFromServer()
-    
-end
 
 
 function Behavior:Shoot()

@@ -12,13 +12,11 @@ GUI = { pixelsToUnits = 0 }
 -- @return (number) The converted value, expressed in scene units.
 function GUI.ToSceneUnit( value )
     if type( value ) == "string" then
-        local length = #value
-        if value:endswith( "px" ) then
-            value = tonumber( value:sub( 0, length-2) ) * GUI.pixelsToUnits
-
-        elseif value:endswith( "u" ) then
-            value = tonumber( value:sub( 0, length-1) )
-
+        value = value:trim()
+        if value:find( "px" ) then
+            value = tonumber( value:sub( 0, #value-2) ) * GUI.pixelsToUnits
+        elseif value:find( "u" ) then
+            value = tonumber( value:sub( 0, #value-1) )
         else
             value = tonumber( value )
         end
@@ -61,6 +59,47 @@ function GUI.Hud.ToHudPosition(position)
     return position, layer
 end
 
+--- Convert the provided value (a length) in a number expressed in screen pixel.
+-- The provided value may be suffixed with "px" or be expressed in percentage (ie: "10%") or be relative (ie: "s" or "s-10") to the specified screen side size (in which case the 'screenSide' argument is mandatory).
+-- @param value (string or number) The value to convert.
+-- @param screenSize (string) [optional] "x" (width) or "y" (height)
+-- @return (number) The converted value, expressed in pixels.
+function GUI.Hud.ToPixel( value, screenSide )
+    if type( value ) == "string" then
+        value = value:trim()
+        local screenSize = CS.Screen.GetSize()
+
+        if value:find( "px" ) then
+            value = tonumber( value:sub( 0, #value-2) )
+
+        elseif value:find( "%", 1, true ) and screenSide ~= nil then
+            value = screenSize[ screenSide ] * tonumber( value:sub( 0, #value-1) ) / 100
+
+        elseif value:find( "s" ) and screenSide ~= nil then  -- ie: "s-50"  =  "screenSize.x - 50px"
+            value = value:sub( 2 ) -- removes the "s" at the beginning
+            if value == "" then -- value was just "s"
+                value = 0
+            end
+            value = screenSize[ screenSide ] + tonumber( value )
+
+        else
+            value = tonumber( value )
+        end
+    end
+    return value
+end
+
+-- Make sure that the components of the provided position are numbers and in pixel,
+-- instead of strings or in percentage or relative to the screensize.
+-- @param position (Vector2) The position.
+-- @return (Vector2) The fixed position.
+function GUI.Hud.FixPosition( position )
+    return Vector2.New( 
+        GUI.Hud.ToPixel( position.x, "x" ),
+        GUI.Hud.ToPixel( position.y, "y" )
+    )
+end
+
 -- Create a new Hud component instance.
 -- @param gameObject (GameObject) The gameObject to add to the component to.
 -- @param params (table) [optional] A table of parameters.
@@ -97,6 +136,7 @@ function GUI.Hud.SetPosition(hud, position)
     local errorHead = "GUI.Hud.SetPosition(hud, position) : "
     Daneel.Debug.CheckArgType(hud, "hud", "GUI.Hud", errorHead)
     Daneel.Debug.CheckArgType(position, "position", "Vector2", errorHead)
+    position = GUI.Hud.FixPosition( position )
 
     local newPosition = GUI.Config.originGO.transform:GetPosition() +
     Vector3:New(
@@ -132,6 +172,7 @@ function GUI.Hud.SetLocalPosition(hud, position)
     local errorHead = "GUI.Hud.SetLocalPosition(hud, position) : "
     Daneel.Debug.CheckArgType(hud, "hud", "GUI.Hud", errorHead)
     Daneel.Debug.CheckArgType(position, "position", "Vector2", errorHead)
+    position = GUI.Hud.FixPosition( position )
 
     local parent = hud.gameObject.parent
     if parent == nil then parent = GUI.Config.originGO end
@@ -180,14 +221,14 @@ end
 
 --- Get the gameObject's layer.
 -- @param hud (GUI.Hud) The hud component.
--- @return (number) The layer.
+-- @return (number) The layer (with one decimal).
 function GUI.Hud.GetLayer(hud)
     Daneel.Debug.StackTrace.BeginFunction("GUI.Hud.GetLayer", hud)
     local errorHead = "GUI.Hud.GetLyer(hud) : "
     Daneel.Debug.CheckArgType(hud, "hud", "GUI.Hud", errorHead)
 
     local originLayer = GUI.Config.originGO.transform:GetPosition().z
-    local layer = originLayer - hud.gameObject.transform:GetPosition().z
+    local layer = math.round( originLayer - hud.gameObject.transform:GetPosition().z, 1 )
     Daneel.Debug.StackTrace.EndFunction()
     return layer
 end
@@ -209,9 +250,9 @@ function GUI.Hud.SetLocalLayer(hud, layer)
     Daneel.Debug.StackTrace.EndFunction()
 end
 
---- Get the gameObject's layer which is actually the inverse of its local position's z component.
+--- Get the gameObject's local layer.
 -- @param hud (GUI.Hud) The hud component.
--- @return (number) The layer.
+-- @return (number) The layer (with one decimal).
 function GUI.Hud.GetLocalLayer(hud)
     Daneel.Debug.StackTrace.BeginFunction("GUI.Hud.GetLayer", hud)
     local errorHead = "GUI.Hud.GetLyer(hud) : "
@@ -220,7 +261,7 @@ function GUI.Hud.GetLocalLayer(hud)
     local parent = hud.gameObject.parent
     if parent == nil then parent = GUI.Config.originGO end
     local originLayer = parent.transform:GetPosition().z
-    local layer = originLayer - hud.gameObject.transform:GetPosition().z
+    local layer = math.round( originLayer - hud.gameObject.transform:GetPosition().z, 1 )
     Daneel.Debug.StackTrace.EndFunction()
     return layer
 end
@@ -259,7 +300,6 @@ function GUI.Toggle.New( gameObject, params )
     gameObject:AddTag( "guiComponent" )
 
     gameObject.OnNewComponent = function( component )
-
         if component == nil then return end
         local mt = getmetatable( component )
 
@@ -342,19 +382,22 @@ function GUI.Toggle.GetText(toggle)
 
     local text = nil
     if toggle.gameObject.textRenderer ~= nil then
-        local textMark = toggle.checkedMark
-        if not toggle.isChecked then
-            textMark = toggle.uncheckedMark
-        end
-        local start, _end = textMark:find(":text")
-        local prefix = textMark:sub(1, start-1)
-        local suffix = textMark:sub(_end+1)
-
         text = toggle.gameObject.textRenderer:GetText()
         if text == nil then
             text = toggle.defaultText
         end
-        text = text:gsub(prefix, ""):gsub(suffix, "")
+
+        local textMark = toggle.checkedMark
+        if not toggle.isChecked then
+            textMark = toggle.uncheckedMark
+        end
+
+        local start, _end = textMark:find( ":text" )
+        if start ~= nil and _end ~= nil then
+            local prefix = textMark:sub( 1, start - 1 )
+            local suffix = textMark:sub( _end + 1 )
+            text = text:gsub(prefix, ""):gsub(suffix, "")
+        end
 
     elseif Daneel.Config.debug.enableDebug then
         print("WARNING : "..errorHead.."Can't get the toggle's text because no TextRenderer component has been found on the gameObject '"..tostring(toggle.gameObject).."'. Returning nil.")
@@ -398,10 +441,10 @@ function GUI.Toggle.Check( toggle, state, forceUpdate )
         Daneel.Event.Fire( toggle, "OnUpdate", toggle )
 
         if toggle.Group ~= nil and state == true then
-            local gameObjects = GameObject.Tags[ toggle.Group ]
+            local gameObjects = GameObject.GetWithTag( toggle.Group )
             for i, gameObject in ipairs( gameObjects ) do
-                if gameObject.transform ~= nil and gameObject ~= toggle.gameObject then
-                    gameObject.toggle:Check( false )
+                if gameObject ~= toggle.gameObject then
+                    gameObject.toggle:Check( false, true )
                 end
             end
         end
@@ -454,6 +497,8 @@ function GUI.Toggle.Set( toggle, params )
     Daneel.Debug.CheckArgType( toggle, "toggle", "GUI.Toggle", errorHead )
     Daneel.Debug.CheckArgType( params, "params", "table", errorHead )
 
+    local group = params.group
+    params.group = nil
     local isChecked = params.isChecked
     params.isChecked = nil
 
@@ -461,8 +506,11 @@ function GUI.Toggle.Set( toggle, params )
         toggle[key] = value
     end
 
+    if group ~= nil then
+        toggle:SetGroup( group )
+    end
     if isChecked ~= nil then
-        toggle:Check(isChecked)
+        toggle:Check( isChecked )
     end
 
     Daneel.Debug.StackTrace.EndFunction()
@@ -839,7 +887,7 @@ function GUI.Input.New( gameObject, params )
         input.OnTextEntered = function( char )
             if input.isFocused then
                 local charNumber = string.byte( char )
-                
+
                 if charNumber == 8 then -- Backspace
                     local text = gameObject.textRenderer:GetText()
                     input:Update( text:sub( 1, #text - 1 ), true )
@@ -849,11 +897,9 @@ function GUI.Input.New( gameObject, params )
 
                 -- Any character between 32 and 127 is regular printable ASCII
                 elseif charNumber >= 32 and charNumber <= 127 then
-                    
                     if input.characterRange ~= nil and input.characterRange:find( char, 1, true ) == nil then
                         return
                     end
-                    
                     input:Update( char )
                 end
             end
@@ -911,7 +957,6 @@ function GUI.Input.Focus( input, state )
         local text = string.trim( input.gameObject.textRenderer:GetText() )
         if state == true then
             CS.Input.OnTextEntered( input.OnTextEntered )
-           
             if text == input.defaultValue then
                 input.gameObject.textRenderer:SetText( "" )
             end
@@ -931,7 +976,6 @@ end
 -- @param text (string) The text (often just one character) to add to the current text.
 -- @param replaceText (boolean) [optional default=false] Tell wether the provided text should be added (false) or replace (true) the current text.
 function GUI.Input.Update( input, text, replaceText )
-
     if not type( input ) == "table" or not input.isFocused then
         return
     end
@@ -949,7 +993,6 @@ function GUI.Input.Update( input, text, replaceText )
     if #text > input.maxLength then
         text = text:sub( 1, input.maxLength )
     end
-    
     if oldText ~= text then
         input.gameObject.textRenderer:SetText( text )
         Daneel.Event.Fire( input, "OnUpdate", input )
@@ -988,7 +1031,7 @@ function GUI.TextArea.New( gameObject, params )
     go:SetParent( gameObject ) -- set as child so that it is destroyed with the GO of the textArea
     textArea.textRuler = gameObject.textRenderer
     if textArea.textRuler == nil then
-        textArea.textRuler = go:CreateComponent( "TextRenderer") -- used to store the TextRenderer properties and mesure the lines length in SetText()
+        textArea.textRuler = go:CreateComponent( "TextRenderer" ) -- used to store the TextRenderer properties and mesure the lines length in SetText()
     end
     textArea.textRuler:SetText( "" )
     
@@ -1069,7 +1112,7 @@ function GUI.TextArea.SetText( textArea, text )
     if textArea.VerticalAlignment == "middle" then
         offset = lineHeight * linesCount / 2 - lineHeight / 2
     elseif textArea.VerticalAlignment == "bottom" then
-        offset = lineHeight * (linesCount-1)
+        offset = lineHeight * (linesCount - 1)
     end
 
     for i, line in ipairs( lines ) do
@@ -1355,11 +1398,15 @@ end
 function Vector2.New(x, y)
     Daneel.Debug.StackTrace.BeginFunction("Vector2.New", x, y)
     local errorHead = "Vector2.New(x, y) : "
-    Daneel.Debug.CheckArgType(x, "x", {"string", "number"}, errorHead)
+    local argType = Daneel.Debug.CheckArgType(x, "x", {"string", "number", "Vector2"}, errorHead)
     Daneel.Debug.CheckOptionalArgType(y, "y", {"string", "number"}, errorHead)
 
     if y == nil then y = x end
     local vector = setmetatable({ x = x, y = y }, Vector2)
+    if argType == "Vector2" then
+        vector.x = x.x
+        vector.y = x.y
+    end
     Daneel.Debug.StackTrace.EndFunction()
     return vector
 end
@@ -1634,12 +1681,12 @@ function GUI.DefaultConfig()
         textArea = {
             areaWidth = 0, -- max line length, in units or pixel as a string (0 = no max length)
             wordWrap = false, -- when a ligne is longer than the area width: cut the ligne when false, put the rest of the ligne in one or several lignes when true
-            newLine = "\n", -- end of ligne delimiter
+            newLine = "<br>", -- end of ligne delimiter
             lineHeight = 1, -- in units or pixels as a string
             verticalAlignment = "top",
 
             font = nil,
-            text = "Text\nArea",
+            text = "",
             alignment = nil,
             opacity = nil,
         },
