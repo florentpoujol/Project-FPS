@@ -13,7 +13,7 @@ local function GetTweenerProperty(tweener)
     if tweener.target ~= nil then
         value = tweener.target[tweener.property]
         if value == nil then
-            local functionName = "Get"..tweener.property:ucfirst()
+            local functionName = "Get"..string.ucfirst( tweener.property )
             if tweener.target[functionName] ~= nil then
                 value = tweener.target[functionName](tweener.target)
             end
@@ -28,7 +28,7 @@ local function SetTweenerProperty(tweener, value)
     Daneel.Debug.StackTrace.BeginFunction("SetTweenerProperty", tweener, value)
     if tweener.target ~= nil then
         if tweener.target[tweener.property] == nil then
-            local functionName = "Set"..tweener.property:ucfirst()
+            local functionName = "Set"..string.ucfirst( tweener.property )
             if tweener.target[functionName] ~= nil then
                 tweener.target[functionName](tweener.target, tweener.property)
             end
@@ -227,12 +227,12 @@ function Tween.Tweener.IsTargetDestroyed( tweener )
             return true
         end
 
-        if tweener.target.gameObject ~= nil and (tweener.target.gameObject.isDestroyed or tweener.target.gameObject.transform == nil) then
+        if tweener.target.gameObject ~= nil and (tweener.target.gameObject.isDestroyed or tweener.target.gameObject.inner == nil) then
             return true
         end
     end
 
-    if tweener.gameObject ~= nil and (tweener.gameObject.isDestroyed or tweener.gameObject.transform == nil) then
+    if tweener.gameObject ~= nil and (tweener.gameObject.isDestroyed or tweener.gameObject.inner == nil) then
         return true
     end
 

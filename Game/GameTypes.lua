@@ -5,12 +5,7 @@ function InitGametype( gt )
         gt = "dm"
     end
     Game.gametype = gt
-    
-    local server = Client.server or LocalServer
-    if server ~= nil then
-        server.gametype = gt
-    end
-    
+        
     -- remove all gameObject that don't have the current's gametype tag
     for short, full in pairs( Gametypes ) do
         if short ~= gt then

@@ -40,7 +40,7 @@ function Behavior:Awake()
     
     -- private (private servers don't shows up in the server browser)
     local privateToggle = GameObject.Get( "Private.Toggle" )
-    privateToggle:AddComponent( "GUI.Toggle", {
+    privateToggle:AddComponent( "toggle", {
         isChecked = Server.localData.isPrivate, -- false = no, true = yes
         text = "Is Private",
         checkedMark =  "Yes  :text",
@@ -54,27 +54,26 @@ function Behavior:Awake()
     -- initial scene
     local levelInputGO = GameObject.Get( "Initial Level.Input" )
     levelInputGO.input.OnValidate = function( input )
-        Server.localData.initialScene = input.gameObject.textRenderer.text
+        Server.localData.scenePath = input.gameObject.textRenderer.text
         self:SaveServerData()        
     end
     levelInputGO.input.OnFocus = function( input )
         if input.isFocused then
             input.gameObject.child.modelRenderer.opacity = 0.5
         else
-            Server.localData.initialScene = input.gameObject.textRenderer.text
+            Server.localData.scenePath = input.gameObject.textRenderer.text
             self:SaveServerData()
             input.gameObject.child.modelRenderer.opacity = 0.2        
         end
     end
         
-    levelInputGO.textRenderer.text = Server.localData.initialScene
+    levelInputGO.textRenderer.text = Server.localData.scenePath
     
     
     -- load saved data
-    Daneel.Storage.Load( "PFPS_ServerData", function( value, error ) 
-        if value == nil then
-            msg( "ERROR : Unable to load server data." )
-            -- always happens the first time
+    Daneel.Storage.Load( "PFPS_ServerData", {}, function( value, error ) 
+        if error ~= nil then
+            msg( "ERROR : Unable to load server data : "..error )
             return
         end
         
@@ -88,15 +87,15 @@ function Behavior:Awake()
         if value.isPrivate == nil then
             value.isPrivate = Server.localData.isPrivate
         end
-        if value.initialScene == nil then
-            value.initialScene = Server.localData.initialScene
+        if value.scenePath == nil then
+            value.scenePath = Server.localData.scenePath
         end
         
         Server.localData = value
         nameInputGO.textRenderer.text = value.name
         playerInputGO.textRenderer.text = value.maxPlayerCount
         privateToggle.toggle:Check( value.isPrivate )
-        levelInputGO.textRenderer.text = value.initialScene
+        levelInputGO.textRenderer.text = value.scenePath
     end )
     
     

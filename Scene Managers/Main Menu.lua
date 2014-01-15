@@ -1,10 +1,13 @@
 
 function Behavior:Awake()
-    local screenSize = Daneel.Storage.Load( "ScreenSize", CS.Screen.GetSize() )
-    CS.Screen.SetSize( screenSize.x, screenSize.y )
+    Daneel.Storage.Load( "ProjectFPS_ScreenSize", CS.Screen.GetSize(), function( screenSize, error )
+        if error == nil then
+            CS.Screen.SetSize( screenSize.x, screenSize.y )
+        end
+     end )
     
     
-    self.subMenus = {}
+    --self.subMenus = {} -- not used as of 23 dec 2013
     
     
     local testLevel = GameObject.Get( "Test Level" )
@@ -23,6 +26,8 @@ function Behavior:Awake()
         
         if input.isFocused then
             background.modelRenderer.opacity = 0.5
+            
+            
         else
             if playerName:trim() == "" then -- don't let the name empty
                 playerName = "Player"
@@ -30,24 +35,29 @@ function Behavior:Awake()
             end
             
             background.modelRenderer.opacity = 0.2
-            Daneel.Storage.Save( "PlayerName", playerName )
+            Daneel.Storage.Save( "ProjectFPS_PlayerName", playerName, function( error )
+                if error ~= nil then
+                    Alert.SetText( "Error saving player name : "..error )
+                end
+            end )
             Player.name = playerName
         end
     end
     
-    local playerName = Daneel.Storage.Load( "PlayerName", "Player" )
-    inputGO.textRenderer.text = playerName
-    Player.name = playerName
+    Daneel.Storage.Load( "ProjectFPS_PlayerName", "Player", function( playerName, error )
+        if error ~= nil then
+            Alert.SetText( "Error loading player name : "..error )
+            return
+        end
+        
+        inputGO.textRenderer.text = playerName
+        Player.name = playerName
+    end )
     
-    
+   
     -- Multi
     local button = GameObject.Get( "Multi" )
-    local subMenu = button:GetChild( "Sub Menu" )
-    table.insert( self.subMenus, subMenu )
-    
-    local text = button:GetChild( "Text" )
-    text:AddTag( "button" )
-    text.OnMouseEnter = function() self:ShowSubMenu( subMenu ) end
+    local subMenu = button:GetChild( "Button Group" )
     
     -- IP input when joining a game
     local ipInput = subMenu:GetChild( "IP Input", true )
@@ -58,13 +68,6 @@ function Behavior:Awake()
         
         if input.isFocused then
             background.modelRenderer.opacity = 0.5
-            --[[if text == defaultIP then
-                if Client.ipToConnectTo ~= nil then
-                    input.gameObject.textRenderer.text = Client.ipToConnectTo
-                else
-                    input.gameObject.textRenderer.text = ""
-                end
-            end]]
             
         else -- on loose focus
             background.modelRenderer.opacity = 0.2
@@ -75,7 +78,7 @@ function Behavior:Awake()
     end
     
     -- join a game and go to the server browser
-    text = subMenu:GetChild( "Join", true )
+    local text = subMenu:GetChild( "Join", true )
     text:AddTag( "button" )
     text.OnClick = function()
         local ip = ipInput.textRenderer.text
@@ -114,7 +117,6 @@ function Behavior:Awake()
     
     -- Hide all sub menus
     --self:ShowSubMenu( nil )
-    self:ShowSubMenu( subMenu ) -- show multi
 
 end -- end Awake()
 

@@ -182,9 +182,9 @@ CS.Network.RegisterMessageHandler( Behavior.BroadcastText, CS.Network.MessageSid
 function Behavior:ReceiveText( data )
     local text = data.text
     
-    local playerName = "Server"
+    local playerName = "[Server]"
     if data.senderId >= 0 then
-        playerName = "Player"..data.senderId
+        playerName = "[Player"..data.senderId.."]"
     end
     
     local server = Client.server or LocalServer
@@ -196,12 +196,12 @@ function Behavior:ReceiveText( data )
     local player = server.playersById[ data.senderId ]
     if player ~= nil then
         if LocalServer ~= nil then
-            playerName = player.name.." ("..player.id..")"
+            playerName = "["..player.name.."] ("..player.id..")"
         else
-            playerName = player.name    
+            playerName = "["..player.name.."]"
         end
     end
 
-    self.gameObject.console:AddLine( playerName.." : "..text )
+    self.gameObject.console:AddLine( playerName.." "..text )
 end
 CS.Network.RegisterMessageHandler( Behavior.ReceiveText, CS.Network.MessageSide.Players )

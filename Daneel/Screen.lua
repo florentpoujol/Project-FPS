@@ -92,7 +92,7 @@ function Screen.Update()
             Screen.lastScreenSize = screenSize
             
             -- save the need size
-            Daneel.Storage.Save( "ScreenSize", screenSize )
+            Daneel.Storage.Save( "ProjectFPS_ScreenSize", screenSize )
         end
     end
 end

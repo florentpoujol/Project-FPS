@@ -8,7 +8,7 @@ Server = {
         name = "Default server name",
         maxPlayerCount = 10,
         isPrivate = false,
-        initialScene = "Levels/Test Level" -- the scene to which the server admin is redirected when the server is created
+        scenePath = "Levels/Test Level" -- the scene to which the server admin is redirected when the server is created
     }, 
     
     defaultData = {
@@ -17,13 +17,19 @@ Server = {
         ip = "127.0.0.1",
         id = -1, -- the id of a server is given by the server browser
         scenePath = "", -- set in Client:LoadLevel
-        gametype = "dm",
+        
+        
         
         playersById = {},
         playerIds = {},
         
         maxPlayerCount = 12,
         name = "Default Server Name",
+        
+        game = {
+            gametype = "dm",
+            friendlyFire = false,
+        }
     }
 }
 Server.__index = Server
@@ -123,12 +129,12 @@ function Server.Start( callback )
     if not server.isPrivate then
         server:UpdateServerBrowser( callback )   
     end
-    
+
+    --Client.server = nil    
     LocalServer = server
     
     --
-    server.scenePath = server.initialScene
-    Scene.Load( server.initialScene )
+    Scene.Load( server.scenePath )
 end
 
 
@@ -186,6 +192,21 @@ function CS.Exit()
 end
 
 
+
+function GetServer()
+    return LocalServer or Client.server
+end
+
+function GetPlayer( playerId )
+    local player = nil -- could write "= Client.player" for when offline
+    local server = LocalServer or Client.server
+    if server then
+        player = server.playersById[ playerId ]
+    end
+    return player
+end
+
+
 ----------------------------------------------------------------------
 
 
@@ -199,17 +220,37 @@ function Behavior:Awake()
     -- (which is called even if the player is disconnected from there)
     CS.Network.Server.OnPlayerJoined( 
         function( player )
+            print("on player joined")
+            for i, player in pairs( LocalServer.playersById ) do
+                print( player.id, player.name, player.isSpawned, player.characterGO)
+            end
+        
+        
             --cprint("Server.OnPlayerJoined", player.id)
             local data = {
-                server = LocalServer,
+                server = table.copy( LocalServer ), -- copy so that modifying playersById and the player in the for loop below does not modify the actualy LocalServer and players
+                -- Can't just recursively copy LocalServer because the game objects and components create recursive loops (that throw a stack overflow)
                 playerId = player.id,
             }
-            for i, player in pairs( data.server.playersById ) do
-                player.characterGO = nil
-                player.isSpawned = false
-                -- player already spawned will be created in Client:UpdateGameState() if their coordinates are sent by Server:Update()
-                -- only interesting player data at this point is the id and name
+            
+            data.server.playersById = {}
+            data.server.playerIds = nil
+            
+            for id, player in pairs( LocalServer.playersById ) do
+                local playerCopy = table.copy( player )
+                playerCopy.characterGO = nil -- must not include the characterGO property because the inner property which is of type userdat can't be sent over the network
+                playerCopy.isSpawned = false
+                data.server.playersById[ id ] = playerCopy
             end
+            
+            -- player already spawned will be created in Client:UpdateGameState() if their coordinates are sent by Server:Update()
+            -- only interesting player data at this point is the id and name
+            
+            print("on player joined 2")
+            for i, player in pairs( LocalServer.playersById ) do
+                print( player.id, player.name, player.isSpawned, player.characterGO)
+            end
+            
             self.gameObject.networkSync:SendMessageToPlayers( "OnConnected", data, { player.id } )
         end
     )
@@ -249,45 +290,75 @@ function Behavior:Awake()
 end
 
 
+
 function Behavior:Update()
-    if LocalServer == nil or #LocalServer.playerIds <  1 then
+    if LocalServer == nil or #LocalServer.playerIds < 1 then
         return
     end
     
     self.frameCount = self.frameCount + 1
+    local data = {}
+    local sendMessage = false
     
-    if self.frameCount % 1 == 0 then
-        local data = {}
+    -- position and rotation
+    if self.frameCount % 3 == 0 then
         data.dataByPlayerId = {}
+        --data.id = self.frameCount
+        
         -- get characters position
         for id, player in pairs( LocalServer.playersById ) do
-            --print("server update player", player, player.id, player.isSpawned, player.characterGO )
-            if player.characterGO ~= nil then
+            if player.isSpawned and player.characterGO ~= nil and player.characterGO.transform ~= nil then
+                sendMessage = true
                 data.dataByPlayerId[ id ] = {
                     position = player.characterGO.transform:GetPosition(),
                     eulerAngles = player.characterGO.transform:GetEulerAngles(),
                 }
-                --print("send position", data.dataByPlayerId[ id ].position)
             end
         end
-        
-        -- others stuffs :
-        -- position of objecive (flag, cart) ?
-        -- state of objectives (height of flag, flag team)
-        -- time until round ends
-        
-        --print("server update ", #data.dataByPlayerId )
+    
+        if sendMessage then
+            
+                --print( "data sent to players" )
+                --table.print( LocalServer.playersById )
+                --table.print( LocalServer.playerIds )
+                --table.print( data.dataByPlayerId )
+            
+            self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", data, LocalServer.playerIds, CS.Network.DeliveryMethod.UnreliableSequenced )
+        end
+    end
+    
+    -- messagesToSend
+    data.dataByPlayerId = {}
+    sendMessage = false
+    
+    for id, player in pairs( LocalServer.playersById ) do
+        if player.messagesToSend ~= nil and table.getlength( player.messagesToSend ) > 0 then
+            sendMessage = true
+            data.dataByPlayerId[ id ] = {
+                messagesToSend = player.messagesToSend,
+            }
+            player.messagesToSend = {}
+        end
+    end
+    
+    if sendMessage then
         self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", data, LocalServer.playerIds )
     end
+    
+    
+    -- others stuffs :
+    -- position of objecive (flag, cart) ?
+    -- state of objectives (height of flag, flag team)
+    -- time until round ends
 end
 
 
 -- Called from the success callback sent to Server.Connect() from Client.ConnectAsPlayer().
 -- Data only holds the client's name
 function Behavior:RegisterPlayer( data, playerId )
-    if table.getlength( LocalServer.playersById ) < LocalServer.maxPlayerCount then
+    if #LocalServer.playerIds < LocalServer.maxPlayerCount then
         
-        local player = table.copy( Player )
+        local player = table.copy( Player, true )
         player.id = playerId
         player.name = data.name
         
@@ -342,6 +413,8 @@ end
 -- Called from the client's "Character Control" script or menus
 -- Data contains the player input
 function Behavior:SetCharacterInput( data, playerId )
+
+    -- spawn
     if data.input.spawnButtonClicked then
         --cprint( "Player #"..playerId.." wants to spawn !" )
         
@@ -352,9 +425,10 @@ function Behavior:SetCharacterInput( data, playerId )
                 playerId = playerId    
             }
             
-            self.gameObject.networkSync:SendMessageToPlayers( "PlayerSpawned", data, LocalServer.playerIds ) -- why not leave player data be broadcasted via Client:UpdateGameState() and let this function creates the game objects ?
-            self.gameObject.client:PlayerSpawned( data )
+            self.gameObject.networkSync:SendMessageToPlayers( "SpawnPlayer", data, LocalServer.playerIds ) -- why not leave player data be broadcasted via Client:UpdateGameState() and let this function creates the game objects ?
+            self.gameObject.client:SpawnPlayer( data )
         end
+
     else
         LocalServer.playersById[ playerId ].input = data.input
     end

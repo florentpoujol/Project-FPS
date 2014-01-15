@@ -24,8 +24,8 @@ function Draw.DefaultConfig()
         },
         
         componentObjects = {
-            ["Draw.LineRenderer"] = Draw.LineRenderer,
-            ["Draw.CircleRenderer"] = Draw.CircleRenderer,
+            lineRenderer = Draw.LineRenderer,
+            circleRenderer = Draw.CircleRenderer,
         },
     }
 

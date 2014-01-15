@@ -1,11 +1,11 @@
 --[[PublicProperties
 areaWidth string ""
 wordWrap boolean False
-newLine string "\n"
+newLine string "<br>"
 lineHeight string "1"
 verticalAlignment string "top"
 font string ""
-text string "Text\nArea"
+text string ""
 alignment string ""
 opacity number 1
 /PublicProperties]]
@@ -21,12 +21,13 @@ function Behavior:Awake()
     if self.gameObject.textArea == nil then
         local params = {
             wordWrap = self.wordWrap,
-            opacity = self.opacity,
+            newLine = self.newLine,
             text = self.text,
+            opacity = self.opacity,
         }
-        local props = {"areaWidth", "newLine", "lineHeight", "verticalAlignment", "font", "alignment"}
-        for i, prop in ipairs( props ) do
-            if self[ prop ]:trim() ~= "" then
+        local props = {"areaWidth", "lineHeight", "verticalAlignment", "font", "alignment"}
+        for i, prop in pairs( props ) do
+            if string.trim( self[ prop ] ) ~= "" then
                 params[ prop ] = self[ prop ]
             end
         end

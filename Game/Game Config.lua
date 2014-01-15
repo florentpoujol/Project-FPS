@@ -25,7 +25,15 @@ CS.FindAsset( "Test Map", "Map" ).levelBuilderBlocks = {
 
 
 
-Game = {}
+Game = {
+    -- the Game objet holds data that must be accessible when offline
+    -- other data about the game which makes sens in an online context are hold by Client.server
+       
+    gametype = "dm",
+    friendlyFire = true,
+}
+
+
 Level = {}
 
 -- Gametype is always written with a lowercase t

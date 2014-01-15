@@ -5,6 +5,7 @@ removeGizmos boolean True
 function Behavior:Awake()
     local mapGO = GameObject.Get( "Map" )
     
+    
     -- level builder
     local tileSet = mapGO.mapRenderer.tileSet
     if tileSet.entitiesByBlockID ~= nil then
@@ -23,8 +24,6 @@ function Behavior:Awake()
     
     -- spawn HUD
     GameObject.New( "In-Game/HUD" )
-    
-    
 end
 
 

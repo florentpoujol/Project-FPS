@@ -1,10 +1,10 @@
 -- Daneel.lua
 -- Contains Daneel's core functionalities.
 --
--- Last modified for v1.3
--- Copyright © 2013 Florent POUJOL, published under the MIT license.
+-- Last modified for v1.3.0
+-- Copyright © 2013-2014 Florent POUJOL, published under the MIT license.
 
--- keep that up there
+-- keep that up there > used first for the Time object, then in Daneel.Load()
 if CS.DaneelModules == nil then
     CS.DaneelModules = {}
     -- DaneelModules is inside CS because you can do 'if CS.DaneelModules == nil' but you can't do 'if DaneelModules == nil'
@@ -335,14 +335,14 @@ function table.copy( t, recursive, doNotCopyMetatable )
         -- but better be safe than sorry
         for key, value in ipairs( t ) do
             if type( value ) == "table" and recursive then
-                value = table.copy( value )
+                value = table.copy( value, recursive )
             end
             table.insert( newTable, value )
         end
     else
         for key, value in pairs( t ) do
             if type( value ) == "table" and recursive then
-                value = table.copy( value )
+                value = table.copy( value, recursive )
             end
             newTable[ key ] = value
         end
@@ -1626,7 +1626,7 @@ function Daneel.Event.Fire( object, eventName, ... )
                 local _type = type( funcOrMessage )
                 if _type == "function" or _type == "userdata" then
                     if funcOrMessage( unpack( arg ) ) == false then
-                        table.insert( listenersTobeRemoved, listener )
+                        table.insert( listenersToBeRemoved, listener )
                     end
                 elseif _type == "string" then
                     message = funcOrMessage
@@ -1642,7 +1642,9 @@ function Daneel.Event.Fire( object, eventName, ... )
     end -- end for listeners
 
     if #listenersToBeRemoved > 0 then
-        Daneel.Event.StopListen( eventName, listenersToBeRemoved )
+        for i, listener in pairs( listenersToBeRemoved ) do
+            Daneel.Event.StopListen( eventName, listener )
+        end
     end
     Daneel.Debug.StackTrace.EndFunction()
 end
@@ -1736,7 +1738,7 @@ Daneel.Storage = {}
 -- Store locally on the computer the provided data under the provided name.
 -- @param name (string) The name of the data.
 -- @param data (mixed) The data to store. May be nil.
--- @param callback (function) [optional] The function called when the save has completed. The potential error (as a string) is passed the callback first and only argument.
+-- @param callback (function) [optional] The function called when the save has completed. The potential error (as a string) is passed to the callback first and only argument (nil if no error).
 function Daneel.Storage.Save( name, data, callback )
     Daneel.Debug.StackTrace.BeginFunction( "Daneel.Storage.Save", name, data )
     local errorHead = "Daneel.Storage.Save( name, data ) : "
@@ -1772,7 +1774,7 @@ end
 -- The function will return the queried value (or defaultValue) if it completes right away, otherwise it returns nil.
 -- @param name (string) The name of the data.
 -- @param defaultValue (mixed) The value that is returned if no data is found.
--- @param callback (function) [optional] The function called when the data is loaded. The value and the potential error (as a string) are passed as first and second argument, respectivily.
+-- @param callback (function) [optional] The function called when the data is loaded. The value and the potential error (as a string) (ni if no error) are passed as first and second argument, respectively.
 -- @return (mixed) The data.
 function Daneel.Storage.Load( name, defaultValue, callback )
     Daneel.Debug.StackTrace.BeginFunction( "Daneel.Storage.Load", name, defaultValue )
@@ -1939,12 +1941,13 @@ end
 
 local OriginalMapLoadFromPackage = Map.LoadFromPackage
 
-function Map.LoadFromPackage( path )
-    local asset = OriginalMapLoadFromPackage( path )
-    if asset ~= nil then
-        rawset( asset, "path", path )
-    end
-    return asset
+function Map.LoadFromPackage( path, callback )
+    OriginalMapLoadFromPackage( path, function( map )
+        if map ~= nil then
+            rawset( map, "path", path )
+        end
+        callback( map )
+    end )
 end
 
 
@@ -2761,6 +2764,11 @@ function GameObject.Set( gameObject, params )
         gameObject:SetParent( params.parent )
         params.parent = nil
     end
+
+    if params.transform ~= nil then
+        gameObject.transform:Set( params.transform )
+        params.transform = nil
+    end
     
     -- components
     for i, componentType in pairs( Daneel.Config.componentTypes ) do
@@ -3065,6 +3073,7 @@ function GameObject.AddComponent( gameObject, componentType, params )
         params = nil
     
     elseif Daneel.DefaultConfig().componentObjects[ componentType ] ~= nil then
+        -- built-in component type
         if componentType == "Transform" then
             if Daneel.Config.debug.enableDebug then
                 print( errorHead.."Can't add a transform component because gameObjects may only have one transform." )
@@ -3087,7 +3096,8 @@ function GameObject.AddComponent( gameObject, componentType, params )
         end
 
     else
-        local componentObject = table.getvalue( _G, componentType )
+        -- custom component type
+        local componentObject = Daneel.Config.componentObjects[ componentType ]
 
         if componentObject ~= nil and type( componentObject.New ) == "function" then
             component = componentObject.New( gameObject )
@@ -3097,14 +3107,6 @@ function GameObject.AddComponent( gameObject, componentType, params )
             end
             Daneel.Debug.StackTrace.EndFunction()
             return
-        end
-
-        local object = table.getvalue( _G, string.split( componentType, "." )[1] ) -- leave the parenthesis
-        if object ~= nil and object.Config ~= nil then
-            local defaultComponentParams = object.Config[ string.lcfirst( componentType ) ]
-            if defaultComponentParams ~= nil then
-                params = table.merge( defaultComponentParams, params )
-            end
         end
     end
     
@@ -3319,7 +3321,7 @@ function GameObject.HasTag( gameObject, tag, atLeastOneTag )
     Daneel.Debug.StackTrace.BeginFunction( "GameObject.HasTag", gameObject, tag, atLeastOneTag )
     local errorHead = "GameObject.HasTag( gameObject, tag ) : "
     Daneel.Debug.CheckArgType( gameObject, "gameObject", "GameObject", errorHead )
-    Daneel.Debug.CheckArgType( tag, "tag", {"string", "table"}, errorHead, {} )
+    Daneel.Debug.CheckArgType( tag, "tag", {"string", "table"}, errorHead )
     Daneel.Debug.CheckOptionalArgType( atLeastOneTag, "atLeastOneTag", "boolean", errorHead )
 
     local tags = tag
@@ -3328,7 +3330,6 @@ function GameObject.HasTag( gameObject, tag, atLeastOneTag )
     end
     local hasTags = false
     if atLeastOneTag == true then
-        
         for i, tag in pairs( tags ) do
             if GameObject.Tags[ tag ] ~= nil and table.containsvalue( GameObject.Tags[ tag ], gameObject ) then
                 hasTags = true
@@ -3458,6 +3459,11 @@ function Daneel.Load()
     if Daneel.isLoaded then return end
     Daneel.isLoading = true
 
+    -- load Daneel config
+    if table.getvalue( _G, "DaneelUserConfig" ) ~= nil and type( DaneelUserConfig ) == "function" then 
+        Daneel.Config = table.deepmerge( Daneel.Config, DaneelUserConfig() ) -- use Daneel.Config here since some of its values may have been modified already by some momdules
+    end
+
     -- load modules config
     for name, _module in pairs( CS.DaneelModules ) do
         if _module.isConfigLoaded ~= true then
@@ -3485,11 +3491,6 @@ function Daneel.Load()
                 Daneel.Config.objects = table.merge( Daneel.Config.objects, _module.Config.componentObjects )
             end
         end
-    end
-
-    -- load Daneel config
-    if table.getvalue( _G, "DaneelUserConfig" ) ~= nil and type( DaneelUserConfig ) == "function" then 
-        Daneel.Config = table.deepmerge( Daneel.Config, DaneelUserConfig() ) -- use Daneel.Config here since some of its values may have been modified already by some momdules
     end
     
     Daneel.Config.objects = table.merge( Daneel.Config.objects, Daneel.Config.componentObjects, Daneel.Config.assetObjects )
@@ -3691,3 +3692,7 @@ function Behavior:Update()
         func()
     end
 end
+
+-- sublime text regexes to produce the no coment version :
+-- "--.*"
+-- "^\s*\n"

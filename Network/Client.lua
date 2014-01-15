@@ -7,8 +7,11 @@ Player = {
     death = 0,
     isReady = false, -- has completely loaded the current level. Set to true in Start() in the common level manager, set to false in LoadLevel() below.
     isSpawned = false,
-    name = "Player", -- set in the Main Menu
+    name = "Player", -- set in the Main Menu/ loaded from save
+    
+    messagesToSend = {},
 }
+
 
 
 Client = {
@@ -22,13 +25,12 @@ Client = {
 
 function Client.Init()
     Client.isConnected = false
-    Client.server = nil
-    Client.player = {}
-    for k,v in pairs( Player ) do
-        Client.player[ k ] = v
-    end
+    --Client.server = Server.New() -- Client.server is nil on the server (when LocalServer is not nil)
+    Client.server = nil -- Client.server is nil on the server (when LocalServer is not nil)    
+    Client.player = table.copy( Player, true )
+    -- no need to load the player name from storage here since it is set in Player.name
 end
-Client.Init()
+-- called a first time in Awake() below
 
 
 -- Cet Client's IP
@@ -96,6 +98,10 @@ end
 function Behavior:Awake()
     self.gameObject.client = self
     
+    if Client.server == nil and Client.player == nil then
+        Client.Init()
+    end
+    
     -- Called when a player is disconnected by the server with CS.Network.Server.DisconnectPlayer() 
     -- or when the server stops
     -- or when the client wasn't able to connect
@@ -116,7 +122,7 @@ end
 function Behavior:OnConnected( data )
     Client.isConnected = true
     Client.server = Server.New( data.server )
-    Client.server.isUpdated = true -- 20/12  ?
+    
     Client.player = table.copy( Player )
     Client.player.id = data.playerId
     
@@ -146,15 +152,6 @@ end
 CS.Network.RegisterMessageHandler( Behavior.OnDisconnected, CS.Network.MessageSide.Players )
 
 
--- Not used as of now
---[[
-function Behavior:SetClientData( data )
-    Client = table.deepmerge( Client, data )
-end
-CS.Network.RegisterMessageHandler( Behavior.SetClientData, CS.Network.MessageSide.Players )
-]]
-
-
 -- Called from Server:RegisterPlayer()
 -- on the newly connected player, on all other players and on the server
 function Behavior:OnPlayerJoined( player )
@@ -182,7 +179,15 @@ function Behavior:OnPlayerJoined( player )
         -- really gotta find a proper way to store data for after the scene is loaded !
         
         -- LoadLevel() below is called next by the server
-    end    
+    end
+    
+    local where = "server"
+    if Client.isConnected then
+        where = "client "..Client.player.id
+    end
+    for i, player in pairs ( server.playersById ) do
+        print( where, player.id, player.name, player.isSpawned, player.characterGO)
+    end
     
     -- The new character is created on the server and all pre-existing players only when it spawns
     
@@ -199,6 +204,7 @@ CS.Network.RegisterMessageHandler( Behavior.OnPlayerJoined, CS.Network.MessageSi
 function Behavior:OnPlayerLeft( data )
     local server = Client.server or LocalServer
     local player = server.playersById[ data.playerId ]
+    player.hasLeft = true
     
     if data.reason == nil then
         data.reason = "Disconnected"
@@ -206,9 +212,11 @@ function Behavior:OnPlayerLeft( data )
     
     local text = "Player '"..player.name.."' has left for reason : "..data.reason
     Tchat.AddLine( text )
-    
+    --table.print( player )
     if player.characterGO ~= nil then
+        --cprint("destroying character", player.name, player.id)
         player.characterGO:Destroy() -- remove character
+        
     end
     -- /!\ if the player has an important item attached to it (ie: flag, bomb) /!\
     
@@ -244,20 +252,22 @@ end
 CS.Network.RegisterMessageHandler( Behavior.LoadLevel, CS.Network.MessageSide.Players )
 
 
--- Called from Server:SetPlayerInput() on each client and the server
--- or called from Client:UpdateGameState()
--- Spawn the character
-function Behavior:PlayerSpawned( data )
-    local server = Client.server or LocalServer
+-- Called from Server:SetPlayerInput() on each client and the server,
+-- or called from Client:UpdateGameState(),
+-- or from the HUD (without data),
+--
+-- Data argument contains the position and playerId
+function Behavior:SpawnPlayer( data )
+    local server = LocalServer or Client.server
     
-    local player = Client.player -- offline local
+    local player = Client.player -- offline
     if server ~= nil then
         player = server.playersById[ data.playerId ]
     end
     
     player.isSpawned = true
     
-    if data == nil then -- offline local
+    if data == nil then -- offline
         data = {
             position = GetSpawnPosition( player ),
             playerId = -1    
@@ -265,61 +275,68 @@ function Behavior:PlayerSpawned( data )
     end
     
     local go = GameObject.New( CharacterPrefab )
-    go.physics:WarpPosition( data.position )
+    go.physics:WarpPosition( Vector3( data.position ) )
+
     go.s.playerId = data.playerId
     go.s.team = player.team
     player.characterGO = go
     
-    if player.id == Client.player.id then
+    if LocalServer == nil and player.id == Client.player.id then
         -- give control of the character to the player
         player.characterGO.s:SetupPlayableCharacter()
     end
     
     cprint(player.name.." ("..player.id..") has spawned")
 end
-CS.Network.RegisterMessageHandler( Behavior.PlayerSpawned, CS.Network.MessageSide.Players )
+CS.Network.RegisterMessageHandler( Behavior.SpawnPlayer, CS.Network.MessageSide.Players )
 
-
+local lastDataId = -1
 -- Update character and objectives position, + other game states
 -- Called by Server:Update()
 -- game object referrenced in data that does not exists yet on this client are created.
 function Behavior:UpdateGameState( data )
-    --print( "clietnn update game state", Client.player.isReady, #data.dataByPlayerId )
+    --[[
+    if data.id ~= nil and data.id <= lastDataId then
+        return
+    end
+    lastDataId = data.id or lastDataId
+    ]]
+    
     if Client.player.isReady then
         local server = Client.server or LocaServer
             
         if data.dataByPlayerId then
-        
+            --[[if Client.player.id == 1 and table.getlength( data.dataByPlayerId ) >= 1 then
+               print("data received on player id 1 ")
+               table.print( data.dataByPlayerId )
+            end]]
             for id, playerData in pairs( data.dataByPlayerId ) do
                 local player = server.playersById[ id ]
-                -- could do   player.characterGO:Set( data.characterGO )   ?
-
-                if player.characterGO ~= nil then
-                    
-                    -- The chaking of the character that happens in the client and not in the server is due to 
-                    -- the local physics that moves the character in between updates from the server (I think).
-                    
-                    -- The rotations from physics have been frozen in the prefab, but we can't froze the positions (at least in Y) or the gravity and jump will ave no effect any more.
-                    -- Could froze all position if we are sure to update each client at least every 2 frames
-                    
+                
+                if player.characterGO ~= nil and player.characterGO.transform ~= nil  then                   
                     if playerData.position then
                         player.characterGO.physics:WarpPosition( Vector3( playerData.position ) )
+                        --player.characterGO.transform:SetPosition( Vector3( playerData.position ) )
                     end
                     
                     if playerData.eulerAngles then
                         player.characterGO.physics:WarpEulerAngles( Vector3( playerData.eulerAngles ) )
                         --player.characterGO.transform:SetEulerAngles( Vector3( playerData.eulerAngles ) ) -- SetEulerAngles() doen't work here, yet it does in "Character Control"
                     end
+                    
+                    if playerData.messagesToSend then
+                        for msgName, arguments in pairs( playerData.messagesToSend ) do
+                            player.characterGO.s[msgName]( player.characterGO.s, unpack( arguments ) )
+                        end
+                    end
                 else
-                    self:PlayerSpawn( {
+                    self:SpawnPlayer( {
                         position = playerData.position,
                         playerId = id,
                     } )
                 end
             end
         end
-        
-        -- other game data
     end
 end
 CS.Network.RegisterMessageHandler( Behavior.UpdateGameState, CS.Network.MessageSide.Players )

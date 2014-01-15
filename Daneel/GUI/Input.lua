@@ -1,15 +1,17 @@
 --[[PublicProperties
 isFocused boolean False
-maxLength number 999999
+maxLength number 9999
 characterRange string ""
 defaultValue string ""
 focusOnBackgroundClick boolean True
+cursorBlinkInterval number 0.5
 /PublicProperties]]
 -- Input.lua
 -- Scripted behavior for GUI.Input component.
 --
 -- Last modified for v1.2.0
 -- Copyright © 2013 Florent POUJOL, published under the MIT license.
+
 
 
 function Behavior:Awake()
@@ -19,6 +21,7 @@ function Behavior:Awake()
             maxLength = self.maxLength,
             focusOnbackgroundClick = self.focusOnbackgroundClick,
             defaultValue = self.defaultValue,
+            cursorBlinkInterval = self.cursorBlinkInterval,
         }
         
         if self.characterRange ~= "" then
