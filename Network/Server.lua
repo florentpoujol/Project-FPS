@@ -140,14 +140,14 @@ end
 
 -- stop the local server
 function Server.Stop( callback )
-    if LocalServer ~= nil and LocalServer then
+    if LocalServer ~= nil then
         msg( "Stopping server" )
         CS.Network.Server.Stop()
         LocalServer.playersById = {}
         LocalServer.playerIds = {}
         if not LocalServer.isPrivate then
             LocalServer:UpdateServerBrowser( true, callback )
-        else
+        elseif callback ~= nil then
             callback()
         end
         LocalServer = nil
@@ -220,12 +220,6 @@ function Behavior:Awake()
     -- (which is called even if the player is disconnected from there)
     CS.Network.Server.OnPlayerJoined( 
         function( player )
-            print("on player joined")
-            for i, player in pairs( LocalServer.playersById ) do
-                print( player.id, player.name, player.isSpawned, player.characterGO)
-            end
-        
-        
             --cprint("Server.OnPlayerJoined", player.id)
             local data = {
                 server = table.copy( LocalServer ), -- copy so that modifying playersById and the player in the for loop below does not modify the actualy LocalServer and players
@@ -245,11 +239,6 @@ function Behavior:Awake()
             
             -- player already spawned will be created in Client:UpdateGameState() if their coordinates are sent by Server:Update()
             -- only interesting player data at this point is the id and name
-            
-            print("on player joined 2")
-            for i, player in pairs( LocalServer.playersById ) do
-                print( player.id, player.name, player.isSpawned, player.characterGO)
-            end
             
             self.gameObject.networkSync:SendMessageToPlayers( "OnConnected", data, { player.id } )
         end

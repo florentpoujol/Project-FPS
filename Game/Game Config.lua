@@ -47,9 +47,31 @@ Gametypes = {
 }
 
 
+-- Config for the server, 
+
+-- easier to set up this way than create UI but it is only possible if they have access to the source code...
+-- they can use "config" file that the game access throught the web api (works in a dropbox)
+-- or they could use Keriz's CSSave editor
+ServerConfig = {
+    current = 1, -- id of the current/first item playing
+    
+    {
+        scene = "Levels/Test Level",
+        gametype = "dm",
+        -- maxRoundCount = 2,
+        -- friendlyFire = false,
+        
+    },
+    {
+        scene = "Levels/Test Level",
+        gametype = "tdm",
+    },
+    
+}
+
+
+
 function DaneelUserConfig()
-    
-    
     return {
         textRenderer = {
             font = "Calibri"
@@ -60,4 +82,25 @@ function DaneelUserConfig()
             enableStackTrace = true,
         }
     }
+end
+
+
+local OriginalFunc = CS.Input.LockMouse
+function CS.Input.LockMouse()
+    CS.Input.isMouseLocked = true
+    OriginalFunc()
+end
+
+local OriginalFunc = CS.Input.UnlockMouse
+function CS.Input.UnlockMouse()
+    CS.Input.isMouseLocked = false
+    OriginalFunc()
+end
+
+function CS.Input.ToggleMouseLock()
+    if CS.Input.isMouseLocked then
+        CS.Input.UnlockMouse()
+    else
+        CS.Input.LockMouse()
+    end
 end

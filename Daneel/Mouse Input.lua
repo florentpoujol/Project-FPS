@@ -6,7 +6,7 @@ updateInterval number 2
 -- Enable mouse interactions with game objects when added to a game object with a camera component.
 --
 -- Last modified for v1.3.0
--- Copyright © 2013 Florent POUJOL, published under the MIT license.
+-- Copyright © 2013-2014 Florent POUJOL, published under the MIT license.
 
 MouseInput = {}
 
@@ -24,7 +24,6 @@ MouseInput.Config = MouseInput.DefaultConfig()
 
 
 ----------------------------------------------------------------------------------
-
 
 
 function Behavior:Awake()
@@ -56,6 +55,10 @@ function Behavior:Awake()
         function() self.update = true end
     )
 
+    self.buttonExists = { LeftMouse = false, RightMouse = false, WheelUp = false, WheelDown = false }
+    for button, exists in pairs( self.buttonExists ) do
+        self.buttonExists[ button ] = Daneel.Utilities.ButtonExists( button )
+    end
 
     Daneel.Debug.StackTrace.EndFunction()
 end
@@ -65,9 +68,27 @@ function Behavior:Update()
     if self.update or self.frameCount % self.updateInterval == 0 then
         self.update = false
 
-        local leftMouseJustPressed = CS.Input.WasButtonJustPressed( "LeftMouse" )
-        local leftMouseDown = CS.Input.IsButtonDown( "LeftMouse" )
-        local rightMouseJustPressed = CS.Input.WasButtonJustPressed( "RightMouse" )
+        local leftMouseJustPressed = false
+        local leftMouseDown = false
+        if self.buttonExists.LeftMouse then
+            leftMouseJustPressed = CS.Input.WasButtonJustPressed( "LeftMouse" )
+            leftMouseDown = CS.Input.IsButtonDown( "LeftMouse" )
+        end
+
+        local rightMouseJustPressed = false
+        if self.buttonExists.RightMouse then
+            rightMouseJustPressed = CS.Input.WasButtonJustPressed( "RightMouse" )
+        end
+
+        local wheelUpJustPressed = false
+        if self.buttonExists.WheelUp then
+            wheelUpJustPressed = CS.Input.WasButtonJustPressed( "WheelUp" )
+        end
+
+        local wheelDownJustPressed = false
+        if self.buttonExists.WheelDown then
+            wheelDownJustPressed = CS.Input.WasButtonJustPressed( "WheelDown" )
+        end
         
         local doubleClick = false
         if leftMouseJustPressed then
@@ -103,7 +124,7 @@ function Behavior:Update()
                             else
                                 gameObject.isMouseOver = true
                                 Daneel.Event.Fire( gameObject, "OnMouseEnter", gameObject )
-                            end
+                            end                           
 
                         elseif gameObject.isMouseOver then
                             -- was the gameObject still hovered the last frame ?
@@ -128,6 +149,14 @@ function Behavior:Update()
                             if rightMouseJustPressed then
                                 Daneel.Event.Fire( gameObject, "OnRightClick", gameObject )
                             end
+
+                            if wheelUpJustPressed then
+                                Daneel.Event.Fire( gameObject, "OnWheelUp", gameObject )
+                            end
+                            if wheelDownJustPressed then
+                                Daneel.Event.Fire( gameObject, "OnWheelDown", gameObject )
+                            end
+
                         end
                     else -- else if gameObject is destroyed
                         gameObjects[ i ] = nil

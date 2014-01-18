@@ -44,6 +44,8 @@ end
 function Behavior:Update()
 
     if CS.Input.WasButtonJustPressed( "RightMouse" ) then
+        CS.Input.ToggleMouseLock()
+        --[[
         if self.isMouseLocked then
             CS.Input.UnlockMouse()
             self.isMouseLocked = false
@@ -51,7 +53,9 @@ function Behavior:Update()
             CS.Input.LockMouse()
             self.isMouseLocked = true
         end
+        ]]
     end
+    self.isMouseLocked = CS.Input.isMouseLocked
     
     --rotate
     if self.isMouseLocked then
@@ -68,27 +72,37 @@ function Behavior:Update()
     
     if self.moveOriented then
 
-        if CS.Input.IsButtonDown( "CameraLeft", "tchatfocused", false ) then
+        if 
+            CS.Input.IsButtonDown( "CameraLeft", "tchatfocused", false ) or
+            CS.Input.IsButtonDown( "Q", "tchatfocused", false ) or
+            CS.Input.IsButtonDown( "A", "tchatfocused", false )
+        then
             self.moveVector.x = -self.moveSpeed 
         end
         
-        if CS.Input.IsButtonDown( "CameraRight", "tchatfocused", false ) then
+        if CS.Input.IsButtonDown( "CameraRight", "tchatfocused", false ) or
+            CS.Input.IsButtonDown( "D", "tchatfocused", false )
+        then
             self.moveVector.x = self.moveSpeed 
         end
         
-        if CS.Input.IsButtonDown( "CameraUp", "tchatfocused", false ) then
+        
+        --[[if CS.Input.IsButtonDown( "CameraUp", "tchatfocused", false ) then
             self.moveVector.y = self.moveSpeed 
         end
         
         if CS.Input.IsButtonDown( "CameraDown", "tchatfocused", false ) then
             self.moveVector.y = -self.moveSpeed 
-        end
+        end]]
         
-        if CS.Input.IsButtonDown( "CameraForward", "tchatfocused", false ) then
+        if CS.Input.IsButtonDown( "CameraForward", "tchatfocused", false ) or
+            CS.Input.IsButtonDown( "W", "tchatfocused", false ) or
+            CS.Input.IsButtonDown( "Z", "tchatfocused", false ) then
             self.moveVector.z = -self.moveSpeed 
         end
         
-        if CS.Input.IsButtonDown( "CameraBackward", "tchatfocused", false ) then
+        if CS.Input.IsButtonDown( "CameraBackward", "tchatfocused", false ) or
+            CS.Input.IsButtonDown( "S", "tchatfocused", false ) then
             self.moveVector.z = self.moveSpeed 
         end
     

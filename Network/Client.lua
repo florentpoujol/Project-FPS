@@ -3,8 +3,8 @@
 Player = {
     id = -1, -- given by the server
     team = 1, -- chosen by the server/player
-    kills = 0, 
-    death = 0,
+    kills = 0,
+    deaths = 0,
     isReady = false, -- has completely loaded the current level. Set to true in Start() in the common level manager, set to false in LoadLevel() below.
     isSpawned = false,
     name = "Player", -- set in the Main Menu/ loaded from save
@@ -181,13 +181,8 @@ function Behavior:OnPlayerJoined( player )
         -- LoadLevel() below is called next by the server
     end
     
-    local where = "server"
-    if Client.isConnected then
-        where = "client "..Client.player.id
-    end
-    for i, player in pairs ( server.playersById ) do
-        print( where, player.id, player.name, player.isSpawned, player.characterGO)
-    end
+    
+    Level.scoreboard.Update()
     
     -- The new character is created on the server and all pre-existing players only when it spawns
     
@@ -222,6 +217,8 @@ function Behavior:OnPlayerLeft( data )
     
     server.playersById[ data.playerId ] = nil
     server.playerIds = table.getkeys( server.playersById )
+    
+    Level.scoreboard.Update()
 end
 CS.Network.RegisterMessageHandler( Behavior.OnPlayerLeft, CS.Network.MessageSide.Players )
 
@@ -231,9 +228,11 @@ CS.Network.RegisterMessageHandler( Behavior.OnPlayerLeft, CS.Network.MessageSide
 function Behavior:LoadLevel( data )
     local server = Client.server or LocalServer
     
-    if LocalServer then
-        for id, player in pairs( LocalServer.playersById ) do
-            player.isReady = false -- set to true in MarkPlayerReady()
+    if server then
+        for id, player in pairs( server.playersById ) do
+            player.isReady = false -- set to true in Server:MarkPlayerReady()
+            player.kills = 0
+            player.deaths = 0
         end
     else
         Client.player.isReady = false -- set to true in "Common Level Manager:Start()"
@@ -306,10 +305,6 @@ function Behavior:UpdateGameState( data )
         local server = Client.server or LocaServer
             
         if data.dataByPlayerId then
-            --[[if Client.player.id == 1 and table.getlength( data.dataByPlayerId ) >= 1 then
-               print("data received on player id 1 ")
-               table.print( data.dataByPlayerId )
-            end]]
             for id, playerData in pairs( data.dataByPlayerId ) do
                 local player = server.playersById[ id ]
                 

@@ -66,11 +66,12 @@ end
 
 AdminCmd = {
     kick = function( playerId )
+        playerId = tonumber(playerId)
         local player = LocalServer.playersById[ playerId ]
         if player == nil then
             Tchat.AddLine( "Unknow player id "..playerId )
         else
-            LocalServer:DisconnectPlayer( playerId, "Kicked by server" )
+            ServerGO.server:DisconnectPlayer( playerId, "Kicked by server" )
         end
     end,
     
@@ -103,7 +104,36 @@ AdminCmd = {
     end,
     
     stopserver = function()
-        CS.Exit()
+        LocalServer.Stop()
+        CS.Input.UnlockMouse()
+        Scene.Load( "Menus/Server Manager" )
+    end,
+    
+    nextrotation = function( id )
+        if id == nil then
+            id = LocalServer.currentRotationId + 1
+        end
+        
+        local rotation = LocalServer.rotations[ id ]
+        if rotation then
+            if rotation.gametype then
+                Game.gametype = rotation.gametype
+                LocalServer.gametype = rotation.gametype
+            end
+            
+            if rotation.scenePath then
+                LocalServer.scenePath = rotation.scenePath
+            end
+            
+            local data = {
+                scenePath = LocalServer.scenePath,
+                gametype = LocalServer.gametype
+            }
+            ServerGO.networkSync:SendMessageToPlayers( "LoadLevel", data, LocalServer.playerIds )
+            ServerGO.client:LoadLevel( data )
+        else
+            Tchat.AddLine( "Bad rotation id", id )
+        end
     end,
 }
 

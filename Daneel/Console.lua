@@ -65,7 +65,198 @@ function Console.Load()
 
         console.textArea.text = text
     end
+    
+    GUI.ScrollableText = {}
+    GUI.ScrollableText.__index = GUI.ScrollableText
+
+
+    Daneel.Config.componentObjects.ScrollableText = GUI.ScrollableText
+    table.insert( Daneel.Config.componentTypes, "ScrollableText" )
+    Daneel.Config.objects.ScrollableText = GUI.ScrollableText
+    
+    Daneel.SetComponents( { ScrollableText = GUI.ScrollableText } )
+    
+    
+
+function GUI.ScrollableText.New( gameObject, params )
+    local scrollableText = GUI.TextArea.New( gameObject, { text = "scrollable <br> text" } )
+    setmetatable( scrollableText, GUI.ScrollableText )
+    gameObject.scrollableText = scrollableText
+    
+    scrollableText.Height = 10 -- 10 lines
+    scrollableText.ScrollPosition = 1
+    
+    if params ~= nil then
+        Component.Set( scrollableText, params )
+    end
+
+    scrollableText.OnWheelUp = function()
+        scrollableText:SetScrollPosition( -1, true ) -- could have a wheelIncrement param in the config
+    end
+
+    scrollableText.OnWheelDown = function()
+        scrollableText:SetScrollPosition( 1, true )
+    end
+    
+    return scrollableText
 end
+
+function GUI.ScrollableText.SetScrollPosition( scrollableText, position, isRelative )
+    if isRelative then
+       position = scrollableText.ScrollPosition + position
+    end
+    if position < 1 then
+        position = 1
+    end
+    local maxPosition = #scrollableText.lines - scrollableText.Height
+    if position > maxPosition then
+        position = maxPosition
+    end
+    print(position)
+    local oldPosition = scrollableText.ScrollPosition
+    scrollableText.ScrollPosition = position
+    if oldPosition ~= position then
+        scrollableText:SetText()
+    end
+end
+
+function GUI.ScrollableText.SetText( textArea, text )
+    --Daneel.Debug.StackTrace.BeginFunction( "GUI.TextArea.SetText", textArea, text )
+    --local errorHead = "GUI.TextArea.SetText( textArea, text ) : "
+    --Daneel.Debug.CheckArgType( textArea, "textArea", "TextArea", errorHead )
+    --Daneel.Debug.CheckOptionnalArgType( text, "text", {"string", "table"}, errorHead )
+    --print("GUI.TextArea.SetText( textArea, text ) : ", textArea, text, textArea.newLine, textArea.ScrollPosition, textArea.Height )
+    
+    local lines = {}
+    local textAreaScale = textArea.gameObject.transform:GetLocalScale()
+    local argType = type( text )
+    
+    if argType == "string" then
+        textArea.Text = text
+
+        lines = { text }
+        if textArea.newLine ~= "" then
+            lines = string.split( text, textArea.NewLine )
+        end
+
+        -- areaWidth is the max length in units of each line
+        local areaWidth = textArea.AreaWidth
+        if areaWidth ~= nil and areaWidth > 0 then
+            -- cut the lines based on their length
+            local tempLines = table.copy( lines )
+            lines = {}
+
+            for i = 1, #tempLines do
+                local line = tempLines[i]
+
+                if textArea.textRuler:GetTextWidth( line ) * textAreaScale.x > areaWidth then
+                    line = string.totable( line )
+                    local newLine = {}
+
+                    for j, char in ipairs( line ) do
+                        table.insert( newLine, char )
+
+                        if textArea.textRuler:GetTextWidth( table.concat( newLine ) ) * textAreaScale.x > areaWidth then
+                            table.remove( newLine )
+                            table.insert( lines, table.concat( newLine ) )
+                            newLine = { char }
+
+                            if not textArea.WordWrap then
+                                newLine = nil
+                                break
+                            end
+                        end
+                    end
+
+                    if newLine ~= nil then
+                        table.insert( lines, table.concat( newLine ) )
+                    end
+                else
+                    table.insert( lines, line )
+                end
+            end -- end loop on lines
+        end
+    elseif argType == "table" then -- type table = lines
+        lines = text
+    else -- nil
+        lines = textArea.lines
+    end
+
+    textArea.lines = lines
+    local linesCount = #lines
+
+    lines = {}
+    for i, line in ipairs( textArea.lines ) do
+        if i >= textArea.ScrollPosition and i <= textArea.ScrollPosition + textArea.Height then
+            table.insert( lines, line )
+        end
+    end
+
+    local lineRenderers = textArea.lineRenderers
+    local lineRenderersCount = #lineRenderers
+    local lineHeight = textArea.LineHeight / textAreaScale.y
+    local gameObject = textArea.gameObject
+    local textRendererParams = {
+        font = textArea.Font,
+        alignment = textArea.Alignment,
+        opacity = textArea.Opacity,
+    }
+
+    -- calculate position offset of the first line based on vertical alignment and number of lines
+    -- the offset is decremented by lineHeight after every lines
+    local offset = -lineHeight / 2 -- verticalAlignment = "top"
+    if textArea.VerticalAlignment == "middle" then
+        offset = lineHeight * linesCount / 2 - lineHeight / 2
+    elseif textArea.VerticalAlignment == "bottom" then
+        offset = lineHeight * linesCount - lineHeight / 2
+    end
+
+    for i, line in ipairs( lines ) do
+        textRendererParams.text = line
+
+        if lineRenderers[i] ~= nil then
+            lineRenderers[i].gameObject.transform:SetLocalPosition( Vector3:New( 0, offset, 0 ) )
+            lineRenderers[i]:Set( textRendererParams )
+        else
+            local newLineGO = GameObject.New( "TextArea" .. textArea.id .. "-Line" .. i, {
+                parent = gameObject,
+                transform = {
+                    localPosition = Vector3:New( 0, offset, 0 ),
+                    localScale = Vector3:New(1),
+                },
+                textRenderer = textRendererParams,
+                
+                tags = { "guiComponent" },
+
+                OnWheelUp = function()
+                    textArea:SetScrollPosition( 1, true ) -- could have a wheelIncrement param in the config
+                end,
+
+                OnWheelDown = function()
+                    textArea:SetScrollPosition( -1, true )
+                end,
+            })
+
+            table.insert( lineRenderers, newLineGO.textRenderer )
+        end
+
+        offset = offset - lineHeight 
+    end
+
+    -- this new text has less lines than the previous one
+    if lineRenderersCount > linesCount then
+        for i = linesCount + 1, lineRenderersCount do
+            lineRenderers[i]:SetText( "" )
+        end
+    end
+
+    Daneel.Event.Fire( textArea, "OnUpdate", textArea )
+
+    Daneel.Debug.StackTrace.EndFunction()
+end
+end
+
+
 
 
 

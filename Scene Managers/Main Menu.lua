@@ -4,10 +4,21 @@ function Behavior:Awake()
         if error == nil then
             CS.Screen.SetSize( screenSize.x, screenSize.y )
         end
+        print( "Screen size :", CS.Screen.GetSize() )
      end )
     
+    Daneel.Event.Listen( "OnSceneLoad", CS.Input.UnlockMouse, true )
     
-    --self.subMenus = {} -- not used as of 23 dec 2013
+    
+    CS.Web.Get( "https://dl.dropboxusercontent.com/u/51314747/craftstudio_tutos_script.css",nil, CS.Web.ResponseType.Text, function( error, text )
+        if error ~= nil then
+            print( "Couldn't get news!" )
+            return
+        end
+
+        print("txt", text )
+    end )
+    
     
     
     local testLevel = GameObject.Get( "Test Level" )
@@ -117,7 +128,21 @@ function Behavior:Awake()
     
     -- Hide all sub menus
     --self:ShowSubMenu( nil )
+    
+    local go = GameObject.Get( "ScrollableText" )
+    go:AddComponent( "ScrollableText", { 
+        newLine = "<br>",
+        Height = 2
+    } )
+    
+    
+    local text = "line1 <br>line2 <br>line3 <br>line4 <br>line5 <br>line6<br>line7 <br>line8"
+    go.scrollableText:SetText( text )
 
+    go.scrollableText.Height = 4
+    go.scrollableText.scrollPosition = 3
+    go.scrollableText:SetText( text )
+    
 end -- end Awake()
 
 

@@ -386,16 +386,20 @@ function Behavior:Die( killerPlayerId )
     end
     
     local killerName = Player.name
-    if killerPlayerId > -1 and server then
-        killerName = server.playersById[ killerPlayerId ].name
+    if killerPlayerId and killerPlayerId > -1 and server then
+        local killer = server.playersById[ killerPlayerId ]
+        killerName = killer.name
+        killer.kills = killer.kills + 1        
     end
     
     local deadName = "DeadName"
     if player then
         deadName = player.name
+        player.deaths = player.deaths + 1
     end
     
     Tchat.AddLine( killerName.." has killed "..deadName )
+    Level.scoreboard.Update()
     
     --
     self.gameObject:Destroy()
