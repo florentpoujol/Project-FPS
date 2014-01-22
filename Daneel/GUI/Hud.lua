@@ -7,8 +7,8 @@ localLayer string ""
 -- Hud.lua
 -- Scripted behavior for GUI.Hud component.
 --
--- Last modified for v1.2.0
--- Copyright © 2013 Florent POUJOL, published under the MIT license.
+-- Last modified for v1.3.0
+-- Copyright © 2013-2014 Florent POUJOL, published under the MIT license.
 
 
 
@@ -16,22 +16,22 @@ function Behavior:Awake()
     if self.gameObject.hud == nil then
         local params = {}
         if self.position ~= "" then
-            local x, y = unpack( self.position:split(",") )
-            params.position = Vector2.New(tonumber(x), tonumber(y))
+            local x, y = unpack( string.split( self.position, "," ) )
+            params.position = Vector2.New( x, y )
         end
         if self.localPosition ~= "" then
-            local x, y = unpack( self.localPosition:split(",") )
-            params.localPosition = Vector2.New(tonumber(x), tonumber(y))
+            local x, y = unpack( string.split( self.localPosition, "," ) )
+            params.localPosition = Vector2.New( x, y )
         end
         if self.layer ~= "" then
-            params.layer = tonumber(self.layer)
+            params.layer = tonumber( self.layer )
         end
         if self.localLayer ~= "" then
-            params.localLayer = tonumber(self.localLayer)
+            params.localLayer = tonumber( self.localLayer )
         end
 
         -- allow the gameObject to stay at the same position than defined in the scene
-        local position, layer = GUI.Hud.ToHudPosition(self.gameObject.transform:GetPosition())
+        local position, layer = GUI.Hud.ToHudPosition( self.gameObject.transform:GetPosition() )
         if params.position == nil and params.localPosition == nil then
             params.position = position
         end
@@ -42,3 +42,4 @@ function Behavior:Awake()
         GUI.Hud.New( self.gameObject, params )
     end
 end
+

@@ -4,9 +4,8 @@ function InitGametype( gt )
     if gt == nil then
         gt = "dm"
     end
-    Game.gametype = gt
-        
-    -- remove all gameObject that don't have the current's gametype tag
+   
+    -- remove all gameObject that don't have the current gametype tag
     for short, full in pairs( Gametypes ) do
         if short ~= gt then
             for i, go in pairs( GameObject.GetWithTag( short ) ) do
@@ -32,7 +31,10 @@ function InitGametype( gt )
     -- remove the camera component on the other team's level spawn
     -- so that the player "spawn" in its level spawn
     -- (the character is not spawned yet, but the player sees the level throught the camera on the level spawn)
+    --
+    -- On the server, the level spawn is also the game object with the "Camera Control" script, that is moved by the admin
     local serverAdminGO = nil
+    
     for i, gameObject in pairs( GameObject.GetWithTag( "levelspawn" ) ) do
         if not gameObject:HasTag( "team"..Client.player.team ) then
             --cprint("destroy camera on go", Client.data.team, gameObject )
@@ -58,7 +60,13 @@ function GetSpawnPosition( player )
     
     local spawns = Level.spawns[ player.team ]
     
-    if Game.gametype == "dm" then
+    local gametype = Server.defaultConfig.game.gametype
+    local server = GetServer()
+    if server then
+        gametype = server.game.gametype
+    end
+    
+    if gametype == "dm" then
         spawns = table.merge( Level.spawns[1], Level.spawns[2] )
     end
     
@@ -104,26 +112,4 @@ function GetSpawnPosition( player )
     
     return spawnPos
 end
-
-
--- this function is useless
---[[
-function SpawnPlayer( player ) -- done in Client:PlayerSpawned()
-    if player == nil then
-        player = Client.player
-    end
-    
-    local spawnpos = GetSpawnPosition( player )
-    
-    -- remove level camera
-    Level.levelSpawns[ player.team ].camera:Destroy()
-    
-    player.isSpawned = true -- do this before spawning the character so that the hud that is shon in the character Awake() is properly displayed
-    local characterGO = GameObject.New( CharacterPrefab )
-    characterGO.s.playerId = player.id
-    characterGO.physics:WarpPosition( spawnPos )
-    player.characterGO = characterGO
-    return playerGO
-end
-]]
 

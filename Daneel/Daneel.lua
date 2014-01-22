@@ -320,14 +320,12 @@ end
 --- Return a copy of the provided table.
 -- @param t (table) The table to copy.
 -- @param recursive (boolean) [optional default=false] Tell whether to also copy the tables found as value (true), or just leave the same table as value (false).
--- @param doNotCopyMetatable (boolean) [optional default=false] Tell whether to copy the provided table's metatable or not.
 -- @return (table) The copied table.
-function table.copy( t, recursive, doNotCopyMetatable )
-    Daneel.Debug.StackTrace.BeginFunction( "table.copy", t, recursive, doNotCopyMetatable )
-    local errorHead = "table.copy( table[, recursive, doNotCopyMetatable] ) :"
+function table.copy( t, recursive )
+    Daneel.Debug.StackTrace.BeginFunction( "table.copy", t, recursive )
+    local errorHead = "table.copy( table[, recursive] ) :"
     Daneel.Debug.CheckArgType(t, "table", "table", errorHead )
     recursive = Daneel.Debug.CheckOptionalArgType( recursive, "recursive", "boolean", errorHead, false )
-    doNotCopyMetatable = Daneel.Debug.CheckOptionalArgType( doNotCopyMetatable, "doNotCopyMetatable", "boolean", errorHead, false )
     
     local newTable = {}
     if table.isarray( t ) then
@@ -348,12 +346,6 @@ function table.copy( t, recursive, doNotCopyMetatable )
         end
     end
     
-    if doNotCopyMetatable ~= true then
-        local mt = getmetatable( t )
-        if mt ~= nil then
-            setmetatable( newTable, mt )
-        end
-    end
     Daneel.Debug.StackTrace.EndFunction()
     return newTable
 end
@@ -460,88 +452,57 @@ function table.print(t)
     Daneel.Debug.StackTrace.EndFunction()
 end
 
---- Merge two or more tables into one. Integer keys are not overridden.
--- When several tables have the same value (with an integer key), the value is only added once in the returned table.
--- @param ... (table) At least two tables to merge together.
+--- Merge two or more tables into one.
+-- Table as values with a metatable are considered as instances and are not recursively merged.
+-- When the tables are arrays, the integer keys are not overridden.
+-- @param ... (table) Two or more tables
+-- @param recursive (boolean) [default=false] Tell whether tables as values must be merged recursively. Has no effect when the tables are arrays.
 -- @return (table) The new table.
 function table.merge( ... )
     local arg = {...}
-    if arg == nil or #arg == 0 then
-        Daneel.Debug.StackTrace.BeginFunction( "table.merge" )
-        error( "table.merge(...) : No argument provided. Need at least two." )
+    local recursive = table.remove( arg )
+    local argType = type( recursive )
+    if argType ~= "boolean" then
+        if argType == "table" then
+            table.insert( arg, recursive )
+        end
+        recursive = false
     end
-    Daneel.Debug.StackTrace.BeginFunction( "table.merge", ... )
+
+    Daneel.Debug.StackTrace.BeginFunction( "table.merge", ..., recursive )
     
     local fullTable = {}
     for i, t in ipairs( arg ) do
         local argType = type( t )
         if argType == "table" then
+            
             if table.isarray( t ) then
                 for key, value in ipairs( t ) do
-                    if not table.containsvalue( fullTable, value ) then
-                        table.insert( fullTable, value )
-                    end
+                    table.insert( fullTable, value )
                 end
+
             else
                 for key, value in pairs( t ) do
-                    if math.isinteger( key ) then
-                        if not table.containsvalue( fullTable, value ) then
-                            table.insert( fullTable, value )
-                        end
-                    else
-                        fullTable[ key ] = value
+                    if fullTable[ key ] ~= nil and recursive and type( value ) == "table" and getmetatable( value ) == nil then
+                        value = table.merge( fullTable[ key ], value, true )
                     end
+                    fullTable[ key ] = value
                 end
             end
+            
         elseif Daneel.Config.debug.enableDebug then
-            print( "WARNING : table.merge(...) : Argument n°"..i.." is of type '"..argType.."' with value '"..tostring(t).."' instead of 'table'. The argument as been ignored." )
+            print( "WARNING : table.merge( ..., recursive ) : Argument n°"..i.." is of type '"..argType.."' with value '"..tostring(t).."' instead of 'table'. The argument as been ignored." )
         end
     end
     Daneel.Debug.StackTrace.EndFunction()
     return fullTable
 end
 
---- Deeply merge two or more tables into one. Integer keys are not overridden.
--- A deep merge means that the table values are also deeply merged.
--- When several tables have the same value (with an integer key), the value is only added once in the returned table.
--- @param ... (table) At least two tables to merge together.
+--- Deprecated since v1.3.1. Alias of table.merge( ..., true ).
+-- @param ... (table) At least two tables to recursively merge together.
 -- @return (table) The new table.
-function table.deepmerge( ... )
-    local arg = {...}
-    if arg == nil or #arg == 0 then
-        Daneel.Debug.StackTrace.BeginFunction("table.deepmerge")
-        error( "table.deepmerge(...) : No argument provided. Need at least two." )
-    end
-    Daneel.Debug.StackTrace.BeginFunction( "table.deepmerge", ... )
-    
-    local fullTable = {}
-    for i, t in ipairs( arg ) do
-        local argType = type( t )
-        if argType == "table" then
-            for key, value in pairs(t) do
-                if math.isinteger( key ) then
-                    if table.containsvalue( fullTable, value ) then
-                        table.insert( fullTable, value )
-                    end
-                else
-                    if fullTable[ key ] ~= nil and type( value ) == "table" then
-                        local mt = getmetatable( fullTable[ key ] )
-                        if mt ~= nil then -- consider the value an intance of an object, just replace the instance
-                            fullTable[ key ] = value
-                        else
-                            fullTable[ key ] = table.deepmerge( fullTable[ key ], value )
-                        end
-                    else
-                        fullTable[ key ] = value
-                    end
-                end
-            end
-        elseif Daneel.Config.debug.enableDebug then
-            print( "WARNING : table.deepmerge(...) : Argument n°"..i.." is of type '"..argType.."' with value '"..tostring(t).."' instead of 'table'. The argument as been ignored." )
-        end
-    end
-    Daneel.Debug.StackTrace.EndFunction()
-    return fullTable
+function table.deepmerge( ... )    
+    return table.merge( unpack( table.insert( {...}, true ) ) )
 end
 
 --- Compare table1 and table2. Returns true if they have the exact same keys which have the exact same values.
@@ -779,7 +740,7 @@ function table.getvalue( t, keys )
     return value
 end
 
---- Tell wether he provided table is an array (has only integer keys).
+--- Tell whether he provided table is an array (has only integer keys).
 -- Decimal numbers with only zeros after the coma are considered as integers.
 -- @param t (table) The table.
 -- @param strict (boolean) [default=true] When false, the function returns true when the table only has integer keys. When true, the function returns true when the table only has integer keys in a single and continuous set.
@@ -1459,7 +1420,7 @@ Daneel.Event = {
 -- The function will be called whenever the provided event will be fired.
 -- @param eventName (string or table) The event name (or names in a table).
 -- @param functionOrObject (function or table) The function (not the function name) or the object.
--- @param isPersistent (boolean) [default=false] Tell wether the listener automatically stops to listen to any event when a new scene is loaded. Always false when the listener is a game object or a component.
+-- @param isPersistent (boolean) [default=false] Tell whether the listener automatically stops to listen to any event when a new scene is loaded. Always false when the listener is a game object or a component.
 function Daneel.Event.Listen( eventName, functionOrObject, isPersistent )
     Daneel.Debug.StackTrace.BeginFunction( "Daneel.Event.Listen", eventName, functionOrObject )
     local errorHead = "Daneel.Event.Listen( eventName, functionOrObject ) : "
@@ -1835,7 +1796,7 @@ Asset = {}
 Asset.__index = Asset
 setmetatable( Asset, { __call = function(Object, ...) return Object.Get(...) end } )
 
-local assetGetTypes = { "string" }
+local assetPathTypes =  { "string" }
 --- Alias of CraftStudio.FindAsset( assetPath[, assetType] ).
 -- Get the asset of the specified name and type.
 -- The first argument may be an asset object, so that you can check if a variable was an asset object or name (and get the corresponding object).
@@ -1846,12 +1807,13 @@ local assetGetTypes = { "string" }
 function Asset.Get( assetPath, assetType, errorIfAssetNotFound )
     Daneel.Debug.StackTrace.BeginFunction( "Asset.Get", assetPath, assetType, errorIfAssetNotFound )
     local errorHead = "Asset.Get( assetPath[, assetType, errorIfAssetNotFound] ) : "
-    if #assetGetTypes == 1 and Daneel.Config.assetTypes ~= nil then
-        assetGetTypes = table.merge( assetGetTypes, Daneel.Config.assetTypes )
-        -- 23 nov 2013 : why do I do that ?
-        -- because Asset.Get() may be called when Daneel.Config.assetTypes is still nil ?
+
+    if #assetPathTypes == 1 then
+        assetPathTypes = table.merge( assetPathTypes, Daneel.Config.assetTypes )
+        -- the assetPath can be an asset or the asset path (string)
+        -- this is done here because there is no garantee that Daneel.Config.assetTypes will already exist in the global scope
     end
-    local argType = Daneel.Debug.CheckArgType( assetPath, "assetPath", assetGetTypes, errorHead )
+    local argType = Daneel.Debug.CheckArgType( assetPath, "assetPath", assetPathTypes, errorHead )
     
     if assetType ~= nil then
         Daneel.Debug.CheckArgType( assetType, "assetType", "string", errorHead )
@@ -2631,6 +2593,32 @@ function CraftStudio.Destroy( object )
     end
     OriginalDestroy( object )
     Daneel.Debug.StackTrace.EndFunction()
+end
+
+
+----------------------------------------------------------------------------------
+
+CS.Input.isMouseLocked = false
+
+local OriginalLockMouse = CS.Input.LockMouse
+function CS.Input.LockMouse()
+    CS.Input.isMouseLocked = true
+    OriginalLockMouse()
+end
+
+local OriginalUnlockMouse = CS.Input.UnlockMouse
+function CS.Input.UnlockMouse()
+    CS.Input.isMouseLocked = false
+    OriginalUnlockMouse()
+end
+
+--- Toggle the locked state of the mouse, which can be accessed via the CS.Input.isMouseLocked property.
+function CS.Input.ToggleMouseLock()
+    if CS.Input.isMouseLocked then
+        CS.Input.UnlockMouse()
+    else
+        CS.Input.LockMouse()
+    end
 end
 
 
@@ -3450,8 +3438,6 @@ for assetType, assetObject in pairs( Daneel.Config.assetObjects ) do
 end
 
 Daneel.Config.componentTypes = table.getkeys( Daneel.Config.componentObjects ) -- put here so that table.getkeys() don't throw error because Daneel.Debug doesn't exists
-Daneel.Config.assetTypes = table.getkeys( Daneel.Config.assetObjects )
-
 
 
 -- load Daneel at the start of the game
@@ -3461,7 +3447,7 @@ function Daneel.Load()
 
     -- load Daneel config
     if table.getvalue( _G, "DaneelUserConfig" ) ~= nil and type( DaneelUserConfig ) == "function" then 
-        Daneel.Config = table.deepmerge( Daneel.Config, DaneelUserConfig() ) -- use Daneel.Config here since some of its values may have been modified already by some momdules
+        Daneel.Config = table.merge( Daneel.Config, DaneelUserConfig(), true ) -- use Daneel.Config here since some of its values may have been modified already by some momdules
     end
 
     -- load modules config
@@ -3479,7 +3465,7 @@ function Daneel.Load()
             local userConfig = {}
             local functionName = name .. "UserConfig"
             if table.getvalue( _G, functionName ) ~= nil and type( _G[ functionName ] ) == "function" then
-                _module.Config = table.deepmerge( _module.Config, _G[ functionName ]() )
+                _module.Config = table.merge( _module.Config, _G[ functionName ](), true )
             end
 
             if _module.Config.objects ~= nil then

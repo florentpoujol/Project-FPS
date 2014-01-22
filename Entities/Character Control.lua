@@ -4,7 +4,7 @@ isPlayable boolean False
 -- note : strangely, having the character stretched does not cause issue with the physics
 
 CharacterPrefab = CS.FindAsset( "Entities/Character" )
-CharacterScript = nil -- used in HUD
+CharacterScript = nil -- used in HUD, only set for the character that the client controls
 
 function Behavior:Awake()
     self.gameObject.s = self
@@ -99,22 +99,16 @@ end
 
 
 function Behavior:Update()
-    if not self.isPlayable and not LocalServer then 
-        -- stopping the funciton here actually makes the character roll on itself because the colider is a sphere
-        -- > not anymore since the physics rotation have been locked
+    if IsClient and not self.isPlayable then 
         return
     end
-    
+    -- runs when server or when client and is playable
+
     self.frameCount = self.frameCount + 1
     
-    local server = LocalServer or Client.server
+    local server = GetServer()
     local playerId = self.playerId -- -1 when offline
-    
-    local player = nil
-    if server ~= nil then
-        player = server.playersById[ playerId ]
-    end
-    -- when offline, server and player are nil
+    local player = GetPlayer()
     
     if player ~= nil and player.hasLeft then
         player.characterGO = nil
@@ -123,7 +117,8 @@ function Behavior:Update()
         return
     end
     
-    if LocalServer and player == nil then
+    if IsServer and player == nil then
+        -- happens sometimes
         print("Character:Update() : player is nil on LocalServer", self.playerId )
         table.print( LocalServer.playersById )
         self.gameObject:Destroy()
@@ -162,7 +157,7 @@ function Behavior:Update()
         
         return
     
-    elseif LocalServer then -- server
+    elseif IsServer then -- server
         -- player.input has been set in Server:SetCharacterInput()
         
         if player.input ~= nil then
@@ -215,8 +210,9 @@ function Behavior:Update()
     -- self.lookAngles.z always == 0
     
     self.gameObject.transform:SetEulerAngles( Vector3:New( self.lookAngles ) ) -- I think this shouldn't work, but it does
-    --self.gameObject.physics:WarpEulerAngles( Vector3:New( self.lookAngles ) ) 
-    -- 05/01/2014 for some reason having WarpEulerAngles uncommented makes that the
+    
+    -- self.gameObject.physics:WarpEulerAngles( Vector3:New( self.lookAngles ) ) 
+    -- /!\ 05/01/2014 for some reason having WarpEulerAngles uncommented makes that the
     -- the character is moved at 0,0,0 between Start() and the first call to Update()
     
     --print("WarpEulerAngles", Vector3:New( self.lookAngles ) )
@@ -246,7 +242,7 @@ function Behavior:Update()
 
     
     -- update hud
-    if LocalServer then
+    if IsServer then
         return 
     end
     
@@ -266,9 +262,11 @@ function Behavior:Shoot()
     self.shootRay.direction = self.shootRay.position - self.gameObject.transform.position 
     -- /!\ can't do that if the camera is not aligned with the character's main position
     -- just take the position and direction of the "gun" if any
+
+    local server = GetServer()
     
     local characters = {}
-    if Game.friendlyFire then
+    if server.game.friendlyFire then
         characters = GameObject.GetWithTag( "characterModel" )
     else
         -- firedly fire is OFF, only get the characters of the other team
@@ -322,7 +320,7 @@ function Behavior:CreateShootLine( endPosition, shootRay )
         endPosition = shootRay.position + shootRay.direction * 9999
     end
     
-    if LocalServer then
+    if IsServer then
         local player = LocalServer.playersById[ self.playerId ]
         player.messagesToSend.CreateShootLine = { 
             endPosition,
@@ -349,7 +347,7 @@ end
 -- amount (number) Amount of damage
 -- killerPlayerId (number) The playerId of the shooter
 function Behavior:TakeDamage( amount, killerPlayerId )
-    if LocalServer then
+    if IsServer then
         local player = LocalServer.playersById[ self.playerId ]
         player.messagesToSend.TakeDamage = { 
             amount,
@@ -379,7 +377,7 @@ function Behavior:Die( killerPlayerId )
     local server = GetServer()
     local player = GetPlayer( self.playerId )
     
-    if LocalServer then
+    if IsServer then
         player.messagesToSend.Die = {
             killerPlayerId
         }

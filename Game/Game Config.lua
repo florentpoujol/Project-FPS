@@ -1,6 +1,5 @@
 
 CS.Screen.SetSize( 1000, 680 )
---CS.Screen.SetResizable( false )
 CS.Physics.SetGravity( Vector3:New( 0, -100, 0 ) )
 
 
@@ -26,15 +25,12 @@ CS.FindAsset( "Test Map", "Map" ).levelBuilderBlocks = {
 
 
 Game = {
-    -- the Game objet holds data that must be accessible when offline
-    -- other data about the game which makes sens in an online context are hold by Client.server
-       
-    gametype = "dm",
-    friendlyFire = true,
+    
 }
 
 
-Level = {}
+Level = {} -- holds "menu", "hud", scorebpoard" keys (see the HUD script)
+-- also "spawns" and "levelspanws" (from "Gametypes" script)
 
 -- Gametype is always written with a lowercase t
 Gametypes = {
@@ -48,26 +44,39 @@ Gametypes = {
 
 
 -- Config for the server, 
+-- This is just a placeholder, config should be read from a .json file acceessible via internet and the CS.Web API
 
--- easier to set up this way than create UI but it is only possible if they have access to the source code...
--- they can use "config" file that the game access throught the web api (works in a dropbox)
--- or they could use Keriz's CSSave editor
+-- When offline, "server" data is taken from there, or from the defaultConfig
 ServerConfig = {
-    current = 1, -- id of the current/first item playing
+    maxPlayerCount = 12,
+    name = "Florent's Server",
+    iPrivate = false,
     
-    {
-        scene = "Levels/Test Level",
+    game = {
+        -- global game settings (will be applied for all levels/gametypes unless overridden in the rotation)
+        scenePath = "Levels/Test Level", -- set in Client:LoadLevel
         gametype = "dm",
-        -- maxRoundCount = 2,
-        -- friendlyFire = false,
+        friendlyFire = false,
         
-    },
-    {
-        scene = "Levels/Test Level",
-        gametype = "tdm",
+        -- gametype specific settings ?   
+        dm = {
+            --roundLimit = 1, -- rounds before going to the next rotation
+            --timeLimit = 10, -- minutes
+            scoreLimit = 100, -- score limit per team (player in DM)
+        },
+        -- ...
+        
+        -- other setting (wepons damage, characters movement...)
+        -- characterMoveSpeed = ?,
+        -- characterJumpSpeed = ?,
+        -- 
     },
     
+    -- the rotation table define the suite of levels and game parameters
+    -- each rotation entries override the "game" table
+    rotation = {},
 }
+
 
 
 
@@ -82,25 +91,4 @@ function DaneelUserConfig()
             enableStackTrace = true,
         }
     }
-end
-
-
-local OriginalFunc = CS.Input.LockMouse
-function CS.Input.LockMouse()
-    CS.Input.isMouseLocked = true
-    OriginalFunc()
-end
-
-local OriginalFunc = CS.Input.UnlockMouse
-function CS.Input.UnlockMouse()
-    CS.Input.isMouseLocked = false
-    OriginalFunc()
-end
-
-function CS.Input.ToggleMouseLock()
-    if CS.Input.isMouseLocked then
-        CS.Input.UnlockMouse()
-    else
-        CS.Input.LockMouse()
-    end
 end

@@ -3,6 +3,8 @@ function Behavior:Awake()
     GUI.Awake()
     -- the HUD Manager game object has to be on top of the herarchy of the hud because the HUD camera does not exist yet when the gui module is loaded but the "Hud Fixed" scripted behavior uses GUI.Hud.ToHudPosition()
     
+    local server = GetServer()
+    
     Level.hudCamera = GameObject.Get( "HUD Camera" )
     Level.hudCamera.Recreate = function()
         local orthoScale = Level.hudCamera.camera.orthographicScale
@@ -52,13 +54,16 @@ function Behavior:Awake()
     local disconnectGO = GameObject.Get( "Disconnect" )
     disconnectGO:AddTag( "mouseinput" )
     disconnectGO.OnClick = function()
-        Client.Disconnect()
+        if Client.isConnected then
+            Client.Disconnect()
+        end
         Scene.Load( "Menus/Main Menu" )
     end
     
     if not Client.isConnected then
         disconnectGO.textRenderer.text = "Exit to main menu"
     end
+    
     
     Level.menu = GameObject.Get( "Menu" )
     Level.menu.Show = function()
@@ -68,7 +73,7 @@ function Behavior:Awake()
         end
     
         -- update buttons
-        if not LocalServer then
+        if IsClient then
             if Client.player.isSpawned then
                 spawnGO.textRenderer.text = "Suicide"
                 spawnGO.OnClick = function()
@@ -90,13 +95,13 @@ function Behavior:Awake()
                     ServerGO.client:SpawnPlayer()
                 end
             end
+            
+            CS.Input.UnlockMouse()
         end
         
         Level.hud.Hide()
         Level.menu.transform.localPosition = Vector3(0,0,-5)
-        if not LocalServer then
-            CS.Input.UnlockMouse()
-        end
+        
         Level.menu.isDisplayed = true
         InputManager.AddTag( "menudisplayed" )
     end
@@ -106,7 +111,7 @@ function Behavior:Awake()
         end
         
         Level.menu.transform.localPosition = Vector3(0,0,999)
-        if not LocalServer then
+        if IsClient then
             CS.Input.LockMouse()
         end
         Level.menu.isDisplayed = false
@@ -129,7 +134,7 @@ function Behavior:Awake()
     Level.scoreboard.Hide()
     
     local gametypeGO = Level.scoreboard:GetChild( "Gametype", true )
-    gametypeGO.textRenderer.text = "Gametype : "..Gametypes[ Game.gametype ]
+    gametypeGO.textRenderer.text = "Gametype : "..Gametypes[ server.game.gametype ]
     
     local levelGO = Level.scoreboard:GetChild( "Level", true )
     levelGO.textRenderer.text = "Level : "..Scene.current.path
@@ -140,23 +145,22 @@ function Behavior:Awake()
     
     Level.scoreboard.Update = function()
         -- update score board
-        local server = LocalServer or Client.server
-        if Level.scoreboard.isDisplayed and server then
+        if Level.scoreboard.isDisplayed then
             local playersByScore = {}
             
             for id, player in pairs( server.playersById ) do
                 table.insert( playersByScore, table.merge( player ) )
             end
             
-            table.sortby( playersByScore, "kills", "desc" ) -- big values first
+            table.sortby( playersByScore, "kills", "desc" ) -- "desc" = big values first
             
             local nameListText = ""
             local kdListText = ""
                            
-            if Game.gametype == "dm" then
+            if server.game.gametype == "dm" then
                 for i, player in ipairs( playersByScore ) do
                     local playerId = ""
-                    if LocalServer then
+                    if IsServer then
                         playerId = " ("..player.id..") "
                     end
                     nameListText = nameListText..player.name..playerId..";"
@@ -188,7 +192,7 @@ function Behavior:Awake()
             end  
         end
     end
-      
+    
     
     -- Tchat
     -- use the in-game tchat as Console and Alert
@@ -216,11 +220,10 @@ function Behavior:Awake()
     
     
     
-    if LocalServer then   
+    if IsServer then   
         changeTeamGO:Destroy()
         spawnGO:Destroy()
         disconnectGO:Destroy()
-        
         -- Server admin use the tchat to control things
     end
 end
@@ -233,7 +236,7 @@ function Behavior:Start()
     local commonText = "Press Escape to toggle menu;Press T to write in the tchat (Enter to send, Escape to unfocus);"
     local playerText = commonText.."Move like in any oter FPS;"
     local serverText = commonText.."Move with ZQ/WASD/Arrows; Toggle mouse cursor with right click;; Send commands via the tchat :;/kick [player id] (to kick player);/ip (to get your ip);/stopserver (to stop the server and go back to the server manager);/loadscene [scene path] [gametype] (to load the provided menu/level with the provided gametype);"
-    if LocalServer then
+    if IsServer then
         tutoGO.textArea.text = serverText
     else
         tutoGO.textArea.text = playerText

@@ -1,5 +1,10 @@
 
 function Behavior:Awake()
+    --LocalServer = Server.New( ServerConfig ) -- is replaced in Server.Start() and unset in Server.Connect()
+    --LocalServer.isOffline = true
+    -- Done in Client;Init()
+
+
     Daneel.Storage.Load( "ProjectFPS_ScreenSize", CS.Screen.GetSize(), function( screenSize, error )
         if error == nil then
             CS.Screen.SetSize( screenSize.x, screenSize.y )
@@ -8,16 +13,6 @@ function Behavior:Awake()
      end )
     
     Daneel.Event.Listen( "OnSceneLoad", CS.Input.UnlockMouse, true )
-    
-    
-    CS.Web.Get( "https://dl.dropboxusercontent.com/u/51314747/craftstudio_tutos_script.css",nil, CS.Web.ResponseType.Text, function( error, text )
-        if error ~= nil then
-            print( "Couldn't get news!" )
-            return
-        end
-
-        print("txt", text )
-    end )
     
     
     
@@ -110,13 +105,79 @@ function Behavior:Awake()
         Scene.Load( "Menus/Server Browser" )
     end
     
-    -- create server
+    --[[
+    -- server manager
     text = subMenu:GetChild( "Server Manager", true )
     text:AddTag( "button" )
     text.OnClick = function() 
         Scene.Load( "Menus/Server Manager" )
     end
-
+    ]]
+    
+    -- server name
+    local inputGO = GameObject.Get( "Server Config Path.Input" )
+    inputGO.input.OnValidate = function( input )
+        Server.configFilePath = input.gameObject.textRenderer.text
+        self:SaveConfigFilePath()        
+    end
+    inputGO.input.OnFocus = function( input )
+        if input.isFocused then
+            input.backgroundGO.modelRenderer.opacity = 0.5
+        else
+            Server.configFilePath = input.gameObject.textRenderer.text
+            self:SaveConfigFilePath()
+            input.backgroundGO.modelRenderer.opacity = 0.2        
+        end
+    end
+    
+    -- load config file path
+    Daneel.Storage.Load( "PFPS_ServerData", {}, function( value, error ) 
+        if error ~= nil then
+            Alert.SetText( "ERROR : Unable to load config file path : "..error )
+            cprint( "ERROR : Unable to load  config file path : "..error )
+            return
+        end
+        
+        if type( value ) ~= "table" then
+            Server.configFilePath = value
+            inputGO.textRenderer.text = value
+        end
+   end )
+      
+    
+    -- server start/stop button
+    local buttonGO = GameObject.Get( "Server Start-Stop Button" )
+    buttonGO:AddTag( "button" )
+    local startText = "Start server"
+    local stopText = "Stop server"
+    
+    buttonGO.OnClick = function()
+        if LocalServer then
+            Server.Stop( function( server, data )
+                if data and data.deleteFromServerBrowser then
+                    Alert.SetText( "Successfully removed the server from the server browser" )
+                end
+            end )
+            buttonGO.textRenderer.text = startText
+        else
+            Server.Start( function( server )
+                if server.id ~= nil then
+                    Alert.SetText( "Successfully posted on the server browser with id "..server.id.." and IP "..server.ip )
+                else
+                    Alert.SetText( "Unable to contact the server browser" )
+                end
+            end )
+            buttonGO.textRenderer.text = stopText
+        end
+    end
+    
+    if LocalServer then
+        buttonGO.textRenderer.text = stopText
+    else
+        buttonGO.textRenderer.text = startText
+    end
+    
+    
     -- /Multi
     
     -- exit
@@ -128,22 +189,19 @@ function Behavior:Awake()
     
     -- Hide all sub menus
     --self:ShowSubMenu( nil )
-    
-    local go = GameObject.Get( "ScrollableText" )
-    go:AddComponent( "ScrollableText", { 
-        newLine = "<br>",
-        Height = 2
-    } )
-    
-    
-    local text = "line1 <br>line2 <br>line3 <br>line4 <br>line5 <br>line6<br>line7 <br>line8"
-    go.scrollableText:SetText( text )
-
-    go.scrollableText.Height = 4
-    go.scrollableText.scrollPosition = 3
-    go.scrollableText:SetText( text )
-    
+        
 end -- end Awake()
+
+
+function Behavior:SaveConfigFilePath()
+    Daneel.Storage.Save( "PFPS_ServerData", Server.configFilePath, function( error )
+        if error ~= nil then
+            Alert.SetText( "Unable to save server data : can't write data" )
+        else
+            Alert.SetText( "Config file path saved successfully." )
+        end
+    end )
+end
 
 
 function Behavior:ShowSubMenu( subMenu )

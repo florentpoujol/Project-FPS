@@ -8,11 +8,10 @@ function Behavior:Awake()
     end
     
     self.serversListGO = GameObject.Get( "Servers List" )
-    --self.serversListGO.textArea.text = ""
-    self.deadIPs = {} -- IPs we can't reach (could also just store the IP)
-    -- keep the list here so that we don't try to connect again when refreshing the lis if it was not deleted from the server browser
+    self.deadIPs = {} -- IPs we can't reach
+    -- keep the list here so that we don't try to connect again when refreshing the list if it was not deleted from the server browser
     
-    if Game.disconnectionReason ~= nil then
+    if Game.disconnectionReason ~= nil then -- set in Client:OnDisconnected()
         Alert.SetText( "You have been disconnected for reason : "..Game.disconnectionReason )
         Game.disconnectionReason = nil
     else
@@ -36,16 +35,12 @@ function Behavior:GetServers()
             self.serversListGO.textArea.text = "No server found."
         else
             local servers = {}
-            for k,v in pairs( data ) do
-                servers[k] = Server.New( v )
-            end
-            
-            for id, server in pairs( servers ) do
-                if table.containsvalue( self.deadIPs, server.ip ) then
-                    servers[id] = nil
+            for id, serverData in pairs( data ) do
+                if not table.containsvalue( self.deadIPs, serverData.ip ) then
+                    servers[ id ] = Server.New( serverData )
                 end
             end
-            
+
             self:BuildServersList( servers )
         end
     end )
@@ -58,6 +53,7 @@ function Behavior:BuildServersList( servers )
     for i, textRenderer in pairs( self.serversListGO.textArea.lineRenderers ) do
         textRenderer.gameObject.server = nil
         Daneel.Event.StopListen( "OnConnected", textRenderer.gameObject )
+        textRenderer.gameObject.OnConnected = nil
     end
     
     local server = nil
@@ -90,14 +86,15 @@ function Behavior:BuildServersList( servers )
             return
         end
         
-        Alert.SetText( "Testing connection to "..(table.getlength( servers ) + 1).." more servers...", -1 )
+        local disconnectTime = 5
+        Alert.SetText( "Testing connection to "..(table.getlength( servers ) + 1).." more servers...", disconnectTime )
         
         if server.ip == Client.ip then
             server.ip = "127.0.0.1"
         end
         
         -- Disconnect if the server hasn't responded in 5 seconds (CS.Network.Connect() takes 12 seconds to do that automatically)
-        disconnectTimer = Tween.Timer( 5, function()
+        disconnectTimer = Tween.Timer( disconnectTime, function()
             table.insert( self.deadIPs, server.ip )
             server:UpdateServerBrowser( true )
             o.TestConnect()
@@ -112,7 +109,7 @@ function Behavior:BuildServersList( servers )
             --CS.Network.Disconnect() -- this is too soon to disconnect
             -- Client:OnConnected() isn't called yet and it seems that it causes error when connecting again to the same server
             -- when refreshing the server list ?
-            Tween.Timer( 0.2, o.TestConnect )
+            Tween.Timer( 0.2, o.TestConnect ) -- call the function again to test the next server
             
             disconnectTimer:Destroy()
             
@@ -127,18 +124,16 @@ function Behavior:BuildServersList( servers )
                     --cprint("set data on textRenderer", textRenderer, go, server )
                     go.server = server
                     
-                    Daneel.Event.Listen( "OnConnected", go )
+                    Daneel.Event.Listen( "OnConnected", go ) -- don't make the function listen to the event to be able to stop to listen
                     go.OnConnected = function( _server )
-                        --cprint("server browser On Conected", _server, go.server, table.getlength(_server.playerIds))
-
-                        if _server.id ~= go.server.id then -- don't compare ip here
+                        if _server.id ~= go.server.id then -- don't compare ip here > 21/01/2014 why ?
                             return
                         end
-                        -- fired in Server:OnConnected with the data of the recently connected server
-                        -- update the text with server's data (name, playerCount, 
+                        -- fired in Client:OnConnected() with the data of the recently connected server
+                        -- update the text with server's data (name, playerCount, ...)
                         go.server = _server
                         textRenderer.text = textRenderer.text.." "..#_server.playerIds.."/".._server.maxPlayerCount.." ".._server.scenePath
-                        Daneel.Event.StopListen( "OnConnected", go )
+                        return false
                     end
                                         
                     go:AddTag( "mouseinput" )
@@ -159,25 +154,18 @@ function Behavior:BuildServersList( servers )
     end
 
     CS.Network.OnDisconnected( function()
-        --cprint("unaccessible server", server)
         table.insert( self.deadIPs, server.ip )
         server:UpdateServerBrowser( true )
         o.TestConnect()
     end )
     
-    o.TestConnect()
+    o.TestConnect() -- start to test the servers
 end
 
 
 function Behavior:Update()
     if CS.Input.WasButtonJustPressed( "Escape" ) then
-        self.GoBackToMainMenu()
+        Client.Init()
+        Scene.Load( "Menus/Main Menu" )
     end
-end
-
-
-function Behavior:GoBackToMainMenu()
-    --CS.Network.Disconnect()
-    Client.Init()
-    Scene.Load( "Menus/Main Menu" )
 end

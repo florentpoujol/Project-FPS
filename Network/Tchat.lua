@@ -1,4 +1,8 @@
 
+-- Allow players to tchat over the network
+-- Any texts can be displayed locally or sent over the network without user input
+-- Add the script on a "Tchat" game object
+
 Tchat = {
     gameObject = nil,
     
@@ -10,8 +14,6 @@ Tchat = {
         end
     end
 }
-
-
 
 
 function Behavior:Awake()
@@ -64,6 +66,7 @@ function Behavior:Update()
 end
 
 
+-- Commands the server admin can issue via the tchat
 AdminCmd = {
     kick = function( playerId )
         playerId = tonumber(playerId)
@@ -106,9 +109,10 @@ AdminCmd = {
     stopserver = function()
         LocalServer.Stop()
         CS.Input.UnlockMouse()
-        Scene.Load( "Menus/Server Manager" )
+        Scene.Load( "Menus/Main Menu" )
     end,
     
+    --[[
     nextrotation = function( id )
         if id == nil then
             id = LocalServer.currentRotationId + 1
@@ -135,6 +139,7 @@ AdminCmd = {
             Tchat.AddLine( "Bad rotation id", id )
         end
     end,
+    ]]
 }
 
 
@@ -142,7 +147,7 @@ AdminCmd = {
 function Behavior:SendTextToServer( text )
     text = text:trim()
     if text:startswith( "/" ) then
-        if LocalServer ~= nil then -- or Client.data.isAdmin
+        if IsServer then
             -- do stuff with the command
             text = text:sub( 2 ):trimstart()
             local command = text:split( " " )-- 1: command  2: parameters
@@ -190,9 +195,9 @@ function Behavior:SendTextToServer( text )
 
     if Client.isConnected then
         self.gameObject.networkSync:SendMessageToServer( "BroadcastText", { text = text } )
-    elseif LocalServer ~= nil then
+    elseif IsServer then
         self:BroadcastText( { text = text }, -2 )
-    else
+    else -- client offline
         self.gameObject.console:AddLine( text )
     end
 end
@@ -225,7 +230,7 @@ function Behavior:ReceiveText( data )
     end
     local player = server.playersById[ data.senderId ]
     if player ~= nil then
-        if LocalServer ~= nil then
+        if IsServer then
             playerName = "["..player.name.."] ("..player.id..")"
         else
             playerName = "["..player.name.."]"

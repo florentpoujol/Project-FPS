@@ -1,6 +1,26 @@
 
 function Behavior:Awake()
-
+    
+    -- server name
+    local inputGO = GameObject.Get( "Config path.Input" )
+    inputGO.input.OnValidate = function( input )
+        Server.configFilePath = input.gameObject.textRenderer.text
+        self:SaveServerData()        
+    end
+    inputGO.input.OnFocus = function( input )
+        if input.isFocused then
+            input.background.modelRenderer.opacity = 0.5
+        else
+            Server.configFilePath = input.gameObject.textRenderer.text
+            self:SaveServerData()
+            input.background.modelRenderer.opacity = 0.2        
+        end
+    end
+        
+    nameInputGO.textRenderer.text = Server.localData.name
+    
+    -- since 20/01/2014 sever config is written via a config file or the ServerConfig table (in "Game Config" script).
+    --[[
     -- server name
     local nameInputGO = GameObject.Get( "Name.Input" )
     nameInputGO.input.OnValidate = function( input )
@@ -68,16 +88,21 @@ function Behavior:Awake()
     end
         
     levelInputGO.textRenderer.text = Server.localData.scenePath
-    
+    ]]
     
     -- load saved data
     Daneel.Storage.Load( "PFPS_ServerData", {}, function( value, error ) 
         if error ~= nil then
-            msg( "ERROR : Unable to load server data : "..error )
+            Alert.SetText( "ERROR : Unable to load server data : "..error )
+            cprint( "ERROR : Unable to load server data : "..error )
             return
         end
         
-        --msg( "Loaded server data" )
+        if type( value ) ~= "table" then
+            Server.configFilePath = value
+        end
+        
+        --[[
         if value.name == nil then
             value.name = Server.localData.name
         end
@@ -96,6 +121,7 @@ function Behavior:Awake()
         playerInputGO.textRenderer.text = value.maxPlayerCount
         privateToggle.toggle:Check( value.isPrivate )
         levelInputGO.textRenderer.text = value.scenePath
+        ]]
     end )
     
     
@@ -105,21 +131,21 @@ function Behavior:Awake()
     local stopText = "Stop server"
     
     buttonGO.OnClick = function()
-        self:SaveServerData()
+        --self:SaveServerData()
         
         if LocalServer then
             Server.Stop( function( server, data )
                 if data and data.deleteFromServerBrowser then
-                    msg( "Successfully removed the server from the server browser" )
+                    Alert.SetText( "Successfully removed the server from the server browser" )
                 end
             end )
             buttonGO.textRenderer.text = startText
         else
             Server.Start( function( server )
                 if server.id ~= nil then
-                    msg( "Successfully posted on the server browser with id "..server.id.." and IP "..server.ip )
+                    Alert.SetText( "Successfully posted on the server browser with id "..server.id.." and IP "..server.ip )
                 else
-                    msg( "Unable to contact the server browser" )
+                    Alert.SetText( "Unable to contact the server browser" )
                 end
             end )
             buttonGO.textRenderer.text = stopText
@@ -142,11 +168,11 @@ end
 
 
 function Behavior:SaveServerData()
-    Daneel.Storage.Save( "PFPS_ServerData", Server.localData, function( error )
+    Daneel.Storage.Save( "PFPS_ServerData", Server.configFilePath, function( error )
         if error ~= nil then
-            msg( "Unable to save server data : can't write data" )
+            Alert.SetText( "Unable to save server data : can't write data" )
         else
-            msg( "Server data saved successfully." )
+            Alert.SetText( "Config file path saved successfully." )
         end
     end )
 end

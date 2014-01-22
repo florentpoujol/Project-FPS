@@ -2,35 +2,47 @@
 
 Player = {
     id = -1, -- given by the server
+    name = "Player", -- set in the Main Menu - loaded from save
+    
     team = 1, -- chosen by the server/player
     kills = 0,
     deaths = 0,
-    isReady = false, -- has completely loaded the current level. Set to true in Start() in the common level manager, set to false in LoadLevel() below.
+    isReady = false, -- has completely loaded the current level. Set to true in Start() in the common level manager, set to false in LoadLevel() below, used in Client:UpdateGameState()
+    
     isSpawned = false,
-    name = "Player", -- set in the Main Menu/ loaded from save
+    characterGO = nil,  
     
     messagesToSend = {},
 }
-
 
 
 Client = {
     isConnected = false,
     ip = "1270.0.1",
     
-    server = nil, -- The server the Client is connected to. Server instance. Set in OnConnected(), unset in Client.Init()
+    server = nil, -- The server (server instance) the Client is connected to. Set in Client:OnConnected(), unset in Client.Init()
     player = nil, -- A copy of the Player object. Set in Client:OnConnected(), unset in Client.Init()
 }
 
 
+-- "Reset" a client
+-- called a first time in Awake() below
 function Client.Init()
     Client.isConnected = false
-    --Client.server = Server.New() -- Client.server is nil on the server (when LocalServer is not nil)
     Client.server = nil -- Client.server is nil on the server (when LocalServer is not nil)    
-    Client.player = table.copy( Player, true )
-    -- no need to load the player name from storage here since it is set in Player.name
+    Client.player = table.copy( Player, true ) -- no need to load the player name from storage here since it is set in Player.name
+    
+    -- for offline
+    if not LocalServer then
+        LocalServer = Server.New( Server.Config )
+        LocalServer.isOffline = true
+    end
+    
+    LocalServer.playersById[ -1 ] = Client.player
+    
+    IsClient = true
+    IsServer = false
 end
--- called a first time in Awake() below
 
 
 -- Cet Client's IP
@@ -44,7 +56,7 @@ function Client.GetIp( callback )
         if ip == nil or ip == "" then
             cprint("GetIP : no IP returned")
         else
-            local ips = ip:split( ',' )
+            local ips = ip:split( ',' ) -- when connected from some network, 2 IPs separated by a coma are returned
             Client.ip = ips[2] or ips[1]
             Client.ip = Client.ip:trim()
             cprint("GetIP : ", ip, Client.ip )
@@ -54,21 +66,7 @@ end
 Client.GetIp()
 
 
-
--- connect the client to the provided ip
-function Client.ConnectToIp( ip, callback )
-    if type( ip ) == "function" then
-        callback = ip
-        ip = nil
-    end
-
-    local server = Server.New()
-    server.ip = ip
-
-    server:Connect( callback )
-end
-
-
+-- Connect to the provided ip or server and register as player
 function Client.ConnectAsPlayer( ipOrServer, callback )
     local server = ipOrServer
     if type( ipOrServer ) == "string" then
@@ -97,9 +95,10 @@ end
 
 function Behavior:Awake()
     self.gameObject.client = self
+    -- self.gameObject and ServerGO should be the same game object
     
     if Client.server == nil and Client.player == nil then
-        Client.Init()
+        Client.Init() -- called from Awake() because of table.copy() (not sure it exists yet from the global scope)
     end
     
     -- Called when a player is disconnected by the server with CS.Network.Server.DisconnectPlayer() 
@@ -121,6 +120,8 @@ end
 -- Data holds the server data as well as the playerId
 function Behavior:OnConnected( data )
     Client.isConnected = true
+    LocalServer = nil
+    
     Client.server = Server.New( data.server )
     
     Client.player = table.copy( Player )
@@ -157,7 +158,7 @@ CS.Network.RegisterMessageHandler( Behavior.OnDisconnected, CS.Network.MessageSi
 function Behavior:OnPlayerJoined( player )
     --cprint(Client.player.id, "OnPlayerJoined", player.id )
     
-    local server = Client.server or LocalServer
+    local server = GetServer()
     server.playersById[ player.id ] = player
     server.playerIds = table.getkeys( server.playersById )
         
@@ -173,14 +174,13 @@ function Behavior:OnPlayerJoined( player )
                 Tchat.AddLine( "You are now connected as player with id #"..player.id.." and name '"..player.name.."." )
                 return false -- automatically stop to listen
             end, 
-            true -- persistent listener, won't be wiped when the scene changes
+            true -- persistent listener, won't stop to listen when the scene changes
         ) 
         
         -- really gotta find a proper way to store data for after the scene is loaded !
         
         -- LoadLevel() below is called next by the server
     end
-    
     
     Level.scoreboard.Update()
     
@@ -196,9 +196,10 @@ CS.Network.RegisterMessageHandler( Behavior.OnPlayerJoined, CS.Network.MessageSi
 -- Called from CS.Network.Server.OnPlayerLeft()
 -- on all remaining players and on the server.
 -- Only receive the playerId  and (maybe) reason for disconnection.
+-- NOT called on the disconnected player
 function Behavior:OnPlayerLeft( data )
-    local server = Client.server or LocalServer
-    local player = server.playersById[ data.playerId ]
+    local server = GetServer()
+    local player = GetPlayer( data.playerId )
     player.hasLeft = true
     
     if data.reason == nil then
@@ -207,11 +208,10 @@ function Behavior:OnPlayerLeft( data )
     
     local text = "Player '"..player.name.."' has left for reason : "..data.reason
     Tchat.AddLine( text )
-    --table.print( player )
+    
     if player.characterGO ~= nil then
-        --cprint("destroying character", player.name, player.id)
         player.characterGO:Destroy() -- remove character
-        
+        player.characterGO = nil
     end
     -- /!\ if the player has an important item attached to it (ie: flag, bomb) /!\
     
@@ -226,27 +226,23 @@ CS.Network.RegisterMessageHandler( Behavior.OnPlayerLeft, CS.Network.MessageSide
 -- Called by the server when the admin change the level (from the Tchat script)
 -- or by Server:RegisterPlayer() (Client:OnPlayerJoined() is called first)
 function Behavior:LoadLevel( data )
-    local server = Client.server or LocalServer
+    local server = GetServer()
     
-    if server then
-        for id, player in pairs( server.playersById ) do
-            player.isReady = false -- set to true in Server:MarkPlayerReady()
-            player.kills = 0
-            player.deaths = 0
-        end
-    else
-        Client.player.isReady = false -- set to true in "Common Level Manager:Start()"
+    for id, player in pairs( server.playersById ) do
+        player.isReady = false -- set to true locally in "Common Level Manager:Start()" or in Server:MarkPlayerReady() (useless to do and has not effect on clients)
+        
+        player.kills = 0
+        player.deaths = 0
     end
     
-    if data.gametype ~= nil then
-        server.gametype = data.gametype
-        Game.gametype = data.gametype
+    if data and data.gametype then
+        server.game.gametype = data.gametype
     end
     if data.scenePath ~= nil then
-        server.scenePath = data.scenePath
+        server.game.scenePath = data.scenePath
     end
     
-    Scene.Load( server.scenePath )
+    Scene.Load( server.game.scenePath )
 end
 CS.Network.RegisterMessageHandler( Behavior.LoadLevel, CS.Network.MessageSide.Players )
 
@@ -257,20 +253,18 @@ CS.Network.RegisterMessageHandler( Behavior.LoadLevel, CS.Network.MessageSide.Pl
 --
 -- Data argument contains the position and playerId
 function Behavior:SpawnPlayer( data )
-    local server = LocalServer or Client.server
-    
-    local player = Client.player -- offline
-    if server ~= nil then
-        player = server.playersById[ data.playerId ]
+    if not data then -- offline
+        data = {
+            playerId = -1
+        }
     end
     
+    local server = GetServer()
+    local player = GetPlayer( data.playerId )
     player.isSpawned = true
     
-    if data == nil then -- offline
-        data = {
-            position = GetSpawnPosition( player ),
-            playerId = -1    
-        }
+    if not data.position then -- offline
+        data.position = GetSpawnPosition( player )
     end
     
     local go = GameObject.New( CharacterPrefab )
@@ -280,35 +274,28 @@ function Behavior:SpawnPlayer( data )
     go.s.team = player.team
     player.characterGO = go
     
-    if LocalServer == nil and player.id == Client.player.id then
+    if player.id == Client.player.id then
         -- give control of the character to the player
         player.characterGO.s:SetupPlayableCharacter()
     end
     
-    cprint(player.name.." ("..player.id..") has spawned")
+    print(player.name.." ("..player.id..") has spawned") -- should not cprint(), could be used for cheat
 end
 CS.Network.RegisterMessageHandler( Behavior.SpawnPlayer, CS.Network.MessageSide.Players )
 
-local lastDataId = -1
+
 -- Update character and objectives position, + other game states
 -- Called by Server:Update()
 -- game object referrenced in data that does not exists yet on this client are created.
 function Behavior:UpdateGameState( data )
-    --[[
-    if data.id ~= nil and data.id <= lastDataId then
-        return
-    end
-    lastDataId = data.id or lastDataId
-    ]]
-    
     if Client.player.isReady then
-        local server = Client.server or LocaServer
-            
         if data.dataByPlayerId then
+            local server = GetServer()
+        
             for id, playerData in pairs( data.dataByPlayerId ) do
                 local player = server.playersById[ id ]
                 
-                if player.characterGO ~= nil and player.characterGO.transform ~= nil  then                   
+                if player.characterGO ~= nil and player.characterGO.inner ~= nil then                   
                     if playerData.position then
                         player.characterGO.physics:WarpPosition( Vector3( playerData.position ) )
                         --player.characterGO.transform:SetPosition( Vector3( playerData.position ) )
@@ -316,7 +303,7 @@ function Behavior:UpdateGameState( data )
                     
                     if playerData.eulerAngles then
                         player.characterGO.physics:WarpEulerAngles( Vector3( playerData.eulerAngles ) )
-                        --player.characterGO.transform:SetEulerAngles( Vector3( playerData.eulerAngles ) ) -- SetEulerAngles() doen't work here, yet it does in "Character Control"
+                        --player.characterGO.transform:SetEulerAngles( Vector3( playerData.eulerAngles ) ) -- SetEulerAngles() doen't work here, yet it does in "Character Control" script
                     end
                     
                     if playerData.messagesToSend then
@@ -330,72 +317,8 @@ function Behavior:UpdateGameState( data )
                         playerId = id,
                     } )
                 end
-            end
-        end
-    end
+            end -- end for
+        end -- end if dataByPlayerId
+    end -- end if isReady
 end
 CS.Network.RegisterMessageHandler( Behavior.UpdateGameState, CS.Network.MessageSide.Players )
-
-
-
-
-
-
-
------------------------------------------------
--- Remote Call
--- self.gameObject.networkSync:RemoteCall( "GlobalFunctionNameToCallOnTheServer", function( dataFromTheServer )  end )
-
-NetworkSync.RemoteCall = {
-    id = 0,
-    callbacksById = {}
-} 
-
-
--- @param networkSync (NetworkSync)
--- @param functionName (string) The name of the global function (may be nested in tables) to call on the server.
--- @param callback (function) [optional] The function called with the data from the server
-function NetworkSync.RemoteCall( networkSync, functionName, remoteCallback )
-    cprint("NetworkSync.RemoteCall", functionName )
-    local id = NetworkSync.RemoteCall.id
-    NetworkSync.RemoteCall.id = id + 1
-    NetworkSync.RemoteCall.callbacksById[ id ] = remoteCallback
-    networkSync:SendMessageToServer( "RemoteCallServer", { functionName = functionName, callbackId = id } )
-end
-
-
-function Behavior:RemoteCallServer( data, playerId )
-    cprint("RemoteCallServer()")
-    local f = table.getvalue( _G, data.functionName )
-    local newData = f()
-    
-    if newData == nil then
-        newData = {}
-    end
-    if type( newData ) ~= "table" then
-        newData = { singleValue = newData }
-    end
-    newData.callbackId = data.callbackId
-    
-    self.gameObject.networkSync:SendMessageToPlayers( "RemoteCallClient", newData, { playerId } )
-end
-CS.Network.RegisterMessageHandler( Behavior.RemoteCallServer, CS.Network.MessageSide.Server )
-
-
-function Behavior:RemoteCallClient( data )
-    cprint("Behavior:RemoteCallClient()")
-    
-    local id = data.callbackId
-    data.callbackId = nil
-    if id ~= nil then
-        local f = NetworkSync.RemoteCall.callbacksById[ id ]
-        if f ~= nil then
-            if data.singleValue ~= nil then
-                data = data.singleValue
-            end
-            f( data )
-        end
-    end
-end
-CS.Network.RegisterMessageHandler( Behavior.RemoteCallClient, CS.Network.MessageSide.Players )
-

@@ -2,34 +2,61 @@
 ServerGO = nil -- the game object this script is attached to
 
 LocalServer = nil -- is set in Server.Start() with a server instance if the player creates a local server (unset in Server.Stop())
+-- OR this is the offline server instance (set in Main Menu Awake()
+
+-- Server data is read from a .json file acceessible via internet and the CS.Web API
+-- For now, we will just use the ServerConfig table found in the "Game Config" script instead
+
 
 Server = {
+    configFilePath = "", -- set in Server Manager
+    
+    --[[
     localData = { -- stores the data that is saved locally and that can be set by the server admin
         name = "Default server name",
         maxPlayerCount = 10,
         isPrivate = false,
         scenePath = "Levels/Test Level" -- the scene to which the server admin is redirected when the server is created
     }, 
+    ]]
     
-    defaultData = {
+    defaultConfig = {
+        isOffline = false,
         serverBrowserAddress = nil, -- is set to the server browser address when server exist on it
-        
         ip = "127.0.0.1",
         id = -1, -- the id of a server is given by the server browser
-        scenePath = "", -- set in Client:LoadLevel
-        
-        
         
         playersById = {},
         playerIds = {},
-        
+    
+        -- config set by the player
         maxPlayerCount = 12,
         name = "Default Server Name",
-        
+        iPrivate = false,
+    
         game = {
+            -- global game settings (will be applied for all levels/gametypes unless overridden in the rotation)
+            scenePath = "Levels/Test Level", -- set in Client:LoadLevel
             gametype = "dm",
             friendlyFire = false,
-        }
+            
+            -- gametype specific settings ?   
+            dm = {
+                --roundLimit = 1, -- rounds before going to the next rotation
+                --timeLimit = 10, -- minutes
+                scoreLimit = 100, -- score limit per team (player in DM)
+            },
+            -- ...
+            
+            -- other setting (wepons damage, characters movement...)
+            -- characterMoveSpeed = ?,
+            -- characterJumpSpeed = ?,
+            -- 
+        },
+        
+        -- the rotation table define the suite of levels and game parameters
+        -- each rotation entries override the "game" table
+        rotation = {},
     }
 }
 Server.__index = Server
@@ -38,19 +65,22 @@ Server.__tostring = function( server )
 end
 
 
+-- creates a new server instance (do not start the server)
 function Server.New( params )
-    local server = table.copy( Server.defaultData )
-    server.playersById = {}
-    server.playerIds = {}
+    local server = table.copy( Server.defaultConfig, true )
     
     if type( params ) == "table" then
-        server = table.merge( server, params )
+        server = table.merge( server, params, true )
     end
 
     return setmetatable( server, Server )
 end
 
 
+-- Add, update or delete the provided server to/from the server browser
+-- @param server (Server) The server instance.
+-- @param delete (boolean) [optional] Tell whether to delete the server from the server browser (or add/update it).
+-- @param callback (function or userdata) [optional] The callback function when the operation has been successfull.
 function Server.UpdateServerBrowser( server, delete, callback )
     local argType = type( delete )
     if argType == "function" or argType == "userdata" then
@@ -70,16 +100,17 @@ function Server.UpdateServerBrowser( server, delete, callback )
     
     local serverBrowserAddress = server.serverBrowserAddress
     if serverBrowserAddress == nil then
-        serverBrowserAddress = ServerBrowserAddress
+        serverBrowserAddress = ServerBrowserAddress -- set in "Game Config" script
     end
     
-    CS.Web.Post( serverBrowserAddress, inputData, CS.Web.ResponseType.JSON, function( error, data )       
+    CS.Web.Post( serverBrowserAddress, inputData, CS.Web.ResponseType.JSON, function( error, data ) 
         if error ~= nil then
             cprint( "ERROR : can't contact server browser : ", serverBrowserAddress, error.message )
-            table.print( inputData )
+            --table.print( inputData )
             return
         end
-
+        
+        -- data is the inputData, updated with the server id and ip
         if data ~= nil then
             if data.deleteFromServerBrowser then
                 --cprint("Successfully delete server with id "..data.id.." from the server browser.")
@@ -92,7 +123,7 @@ function Server.UpdateServerBrowser( server, delete, callback )
                 server.id = data.id
                 server.ip = data.ip
             else
-                --cprint("Server browser error : empty confirmation data, probably nothing happened.")
+                cprint("Server browser error : empty confirmation data, probably nothing happened.")
                 table.print( server )
                 table.print( inputData )
                 table.print( data )
@@ -111,46 +142,44 @@ end
 
 -- start the local server
 function Server.Start( callback )
-    if LocalServer then
-        msg( "Server.Start() : server is already running")
+    if IsServer then
+        cprint( "Server.Start() : server is already running")
         return
     end
-
-    msg( "Starting server" )
+    
+    Alert.SetText( "Starting server" )
     CS.Network.Server.Start()
-
-    local server = {}
-    server.playersById = {}
-    server.playerIds = {}
-    server = table.merge( server, Server.localData )
     
-    setmetatable( server, Server )
-    
+    local server = Server.New( ServerConfig )
     if not server.isPrivate then
         server:UpdateServerBrowser( callback )   
     end
-
-    --Client.server = nil    
-    LocalServer = server
     
-    --
-    Scene.Load( server.scenePath )
+    LocalServer = server
+    IsClient = false
+    IsServer = true
+
+    Scene.Load( server.game.scenePath )
 end
 
 
 -- stop the local server
 function Server.Stop( callback )
-    if LocalServer ~= nil then
-        msg( "Stopping server" )
+    if IsServer then
+        Alert.SetText( "Stopping server" )
         CS.Network.Server.Stop()
-        LocalServer.playersById = {}
-        LocalServer.playerIds = {}
+        
         if not LocalServer.isPrivate then
             LocalServer:UpdateServerBrowser( true, callback )
         elseif callback ~= nil then
             callback()
         end
+        
+        LocalServer.playersById = {} -- 21/01/2014 : why do I do that ?
+        LocalServer.playerIds = {}
+        
         LocalServer = nil
+        Client.Init()
     end
 end
 
@@ -167,9 +196,7 @@ function Server.Connect( server, callback )
         cprint("Server.Connect() : Connecting to : ", server, " With ip "..ip )
         
         
-        CS.Network.Connect( ip, CS.Network.DefaultPort, function()
-            Client.server = server
-            
+        CS.Network.Connect( ip, CS.Network.DefaultPort, function()           
             if callback ~= nil then
                 callback()
             end
@@ -183,7 +210,7 @@ end
 local OriginalExit = CS.Exit
 
 function CS.Exit()   
-    if LocalServer ~= nil and LocalServer then
+    if IsServer then
         Server.Stop( function() OriginalExit() end )
         -- what we want here is really to remove the server from the server browser
     else
@@ -192,19 +219,35 @@ function CS.Exit()
 end
 
 
-
+-- experimental
 function GetServer()
-    return LocalServer or Client.server
+    return Client.server or LocalServer
+    -- when offline, LocalServer is the "offline" server
+    
+    -- when offline, "server" could be Server.defaultConfig
+    -- OR we could create an OfflineServer instance, with only Client.player inside server.playersById (or just use LocalServer while Client.isConnected is false) (best idea so far)
 end
 
 function GetPlayer( playerId )
-    local player = nil -- could write "= Client.player" for when offline
-    local server = LocalServer or Client.server
-    if server then
+    local player = Client.player
+    local server = GetServer()
+    if server and not server.isOffline and playerId and playerId ~= player.id then
         player = server.playersById[ playerId ]
     end
     return player
 end
+
+IsClient = true
+IsServer = false
+--[[
+function IsServer()
+    return (LocalServer and LocalServer.isOffline == false)
+end
+
+function IsClient()
+    return not IsServer()
+end
+]]
 
 
 ----------------------------------------------------------------------
@@ -214,7 +257,7 @@ function Behavior:Awake()
     ServerGO = self.gameObject
     self.gameObject.server = self
     self.gameObject.networkSync:Setup( 0 )
-
+    self.frameCount = 0
     
     -- Called when someone just arrived on the server, before the success callback of CS.NetWork.Connect() 
     -- (which is called even if the player is disconnected from there)
@@ -230,15 +273,15 @@ function Behavior:Awake()
             data.server.playersById = {}
             data.server.playerIds = nil
             
+            -- fill data.server.playersById
             for id, player in pairs( LocalServer.playersById ) do
                 local playerCopy = table.copy( player )
-                playerCopy.characterGO = nil -- must not include the characterGO property because the inner property which is of type userdat can't be sent over the network
+                playerCopy.characterGO = nil -- must not include the characterGO property because the inner property can't be sent over the network (because it is of type userdata)
                 playerCopy.isSpawned = false
                 data.server.playersById[ id ] = playerCopy
             end
             
             -- player already spawned will be created in Client:UpdateGameState() if their coordinates are sent by Server:Update()
-            -- only interesting player data at this point is the id and name
             
             self.gameObject.networkSync:SendMessageToPlayers( "OnConnected", data, { player.id } )
         end
@@ -274,29 +317,22 @@ function Behavior:Awake()
             end
         end
     )
-    
-    self.frameCount = 0
 end
 
 
-
 function Behavior:Update()
-    if LocalServer == nil or #LocalServer.playerIds < 1 then
+    if not IsServer or #LocalServer.playerIds < 1 then
         return
     end
     
     self.frameCount = self.frameCount + 1
-    local data = {}
+    local data = { dataByPlayerId = {} }
     local sendMessage = false
     
     -- position and rotation
     if self.frameCount % 3 == 0 then
-        data.dataByPlayerId = {}
-        --data.id = self.frameCount
-        
-        -- get characters position
         for id, player in pairs( LocalServer.playersById ) do
-            if player.isSpawned and player.characterGO ~= nil and player.characterGO.transform ~= nil then
+            if player.isSpawned and player.characterGO ~= nil and player.characterGO.inner ~= nil then
                 sendMessage = true
                 data.dataByPlayerId[ id ] = {
                     position = player.characterGO.transform:GetPosition(),
@@ -305,13 +341,7 @@ function Behavior:Update()
             end
         end
     
-        if sendMessage then
-            
-                --print( "data sent to players" )
-                --table.print( LocalServer.playersById )
-                --table.print( LocalServer.playerIds )
-                --table.print( data.dataByPlayerId )
-            
+        if sendMessage then           
             self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", data, LocalServer.playerIds, CS.Network.DeliveryMethod.UnreliableSequenced )
         end
     end
@@ -357,7 +387,7 @@ function Behavior:RegisterPlayer( data, playerId )
         
         -- choose a team
         player.team = 1
-        if LocalServer.gametype ~= "dm" then
+        if LocalServer.game.gametype ~= "dm" then
             local teamCount = { 0, 0 }
             for id, player in pairs( LocalServer.playersById ) do
                 teamCount[ player.team ] = teamCount[ player.team ] + 1
@@ -375,8 +405,8 @@ function Behavior:RegisterPlayer( data, playerId )
         self.gameObject.client:OnPlayerJoined( player )
         
         local data = {
-            scenePath = LocalServer.scenePath,
-            gametype = LocalServer.gametype
+            scenePath = LocalServer.game.scenePath,
+            gametype = LocalServer.game.gametype
         }
         
         self.gameObject.networkSync:SendMessageToPlayers( "LoadLevel", data, { player.id } ) 
@@ -414,7 +444,7 @@ function Behavior:SetCharacterInput( data, playerId )
                 playerId = playerId    
             }
             
-            self.gameObject.networkSync:SendMessageToPlayers( "SpawnPlayer", data, LocalServer.playerIds ) -- why not leave player data be broadcasted via Client:UpdateGameState() and let this function creates the game objects ?
+            self.gameObject.networkSync:SendMessageToPlayers( "SpawnPlayer", data, LocalServer.playerIds ) -- why not leave player data be broadcasted via Client:UpdateGameState() and let it creates the game objects ?
             self.gameObject.client:SpawnPlayer( data )
         end
 
@@ -431,4 +461,5 @@ function Behavior:MarkPlayerReady( data, playerId )
     LocalServer.playersById[ playerId ].isReady = true
 end
 CS.Network.RegisterMessageHandler( Behavior.MarkPlayerReady, CS.Network.MessageSide.Server )
-
+-- Notifying the server of the readyness is actually currently useless since the server data is sent to all players anyway
+-- "isReady" is only used on the client side in Client:UpdateGameState()

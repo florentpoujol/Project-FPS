@@ -1,4 +1,6 @@
 
+-- Allow to save hud component's position when the windows is resized in order to automatically reposition them
+
 Screen = { lastScreenSize = CS.Screen.GetSize() }
 
 if CS.DaneelModules == nil then
@@ -8,24 +10,6 @@ CS.DaneelModules[ "Screen" ] = Screen
 
 
 function Screen.Load()
-
-    -- override to allow to copy a Vector2 provided as parameter
-    function Vector2.New(x, y)
-        Daneel.Debug.StackTrace.BeginFunction("Vector2.New", x, y)
-        local errorHead = "Vector2.New(x, y) : "
-        local argType = Daneel.Debug.CheckArgType(x, "x", {"string", "number", "Vector2"}, errorHead)
-        Daneel.Debug.CheckOptionalArgType(y, "y", {"string", "number"}, errorHead)
-    
-        if y == nil then y = x end
-        local vector = setmetatable({ x = x, y = y }, Vector2)
-        if argType == "Vector2" then
-            vector.x = x.x
-            vector.y = x.y
-        end
-        Daneel.Debug.StackTrace.EndFunction()
-        return vector
-    end
-
     local OriginalHudNew = GUI.Hud.New
     
     -- override GUI.Hud.New so that hud component update their position whevever the screen is resized
@@ -63,16 +47,11 @@ function Screen.Load()
         return hud
     end
     
-    
-    
-    
+
     local OriginalSetPosition = GUI.Hud.SetPosition
-    -- override SetPosition to allow to set position relative to the screen size or in percentage
     function GUI.Hud.SetPosition(hud, position )
         hud.savedPosition = position
-        --print("setposition", position)
-        
-        OriginalSetPosition( hud, GUI.Hud.FixPosition( position ) )
+        OriginalSetPosition( hud, position )        
     end
 end
 
@@ -86,12 +65,14 @@ function Screen.Update()
         local screenSize = CS.Screen.GetSize()
         if screenSize.x ~= Screen.lastScreenSize.x or screenSize.y ~= Screen.lastScreenSize.y then
             Daneel.Event.Fire( "SaveHudPosition", { oldScreenSize = Screen.lastScreenSize } )
+            
             GUI.Config.originGO:Destroy()
             GUI.Awake() -- create a new GUI origin
+            
             Daneel.Event.Fire( "OnScreenResized" )
             Screen.lastScreenSize = screenSize
             
-            -- save the need size
+            -- save the size
             Daneel.Storage.Save( "ProjectFPS_ScreenSize", screenSize )
         end
     end

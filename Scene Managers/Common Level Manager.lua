@@ -7,10 +7,13 @@ function Behavior:Awake()
     
     
     -- level builder
+    --[[ -- not used at this time
     local tileSet = mapGO.mapRenderer.tileSet
     if tileSet.entitiesByBlockID ~= nil then
-        mapGO.mapRenderer:ReplaceEntityBlocks( {x=-20,y=-5,z=-20},  {x=20,y=10,z=20} )
+        --mapGO.mapRenderer:ReplaceEntityBlocks( {x=-20,y=-5,z=-20},  {x=20,y=10,z=20} )
+
     end
+    ]]
     
     local map = mapGO.mapRenderer.map
     if map.levelBuilderBlocks ~= nil then
@@ -18,7 +21,7 @@ function Behavior:Awake()
     end
     
     -- set physics now that the map has been modified
-    mapGO:AddComponent( "Physics" )
+    mapGO:CreateComponent( "Physics" )
     mapGO.physics:SetBodyType( Physics.BodyType.Static )
     mapGO.physics:SetupAsMap( map )
     
@@ -37,16 +40,12 @@ function Behavior:Start()
         end
     end
     
-    local gt = Game.gametype
-    local server = Client.server or LocalServer
-    if server ~= nil then
-        gt = server.gametype
-    end
-    InitGametype( gt )
+    local server = GetServer()
+    InitGametype( server.game.gametype )
     
     if Client.isConnected then
         Client.player.isReady = true -- set to false in Server:LoadLevel()
-        ServerGO.networkSync:SendMessageToServer( "MarkPlayerReady" ) -- now that the scene is fully loaded set ready to begin receiving game status update
+        --ServerGO.networkSync:SendMessageToServer( "MarkPlayerReady" ) -- now that the scene is fully loaded set ready to begin receiving game status update
     end
 end
 
