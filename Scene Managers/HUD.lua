@@ -1,3 +1,6 @@
+
+-- Spawned from "Common Level Manager:Awake()"
+
 function Behavior:Awake()
     self.gameObject.parent.transform.position = Vector3(0,-999,0)
     GUI.Awake()
@@ -5,17 +8,20 @@ function Behavior:Awake()
     
     local server = GetServer()
     
-    Level.hudCamera = GameObject.Get( "HUD Camera" )
-    Level.hudCamera.Recreate = function()
-        local orthoScale = Level.hudCamera.camera.orthographicScale
-        Level.hudCamera.camera:Destroy()
-        Level.hudCamera:AddComponent( "Camera" )
-        Level.hudCamera.camera.projectionMode = "orthographic"
-        Level.hudCamera.camera.orthographicScale = orthoScale
+    Level.hudCameraGO = GameObject.Get( "HUD Camera" )
+    Level.hudCamera = Level.hudCameraGO
+    Level.hudCameraGO.Recreate = function()
+        local orthoScale = Level.hudCameraGO.camera.orthographicScale
+        Level.hudCameraGO.camera:Destroy()
+        Level.hudCameraGO:AddComponent( "Camera" )
+        Level.hudCameraGO.camera.projectionMode = "orthographic"
+        Level.hudCameraGO.camera.orthographicScale = orthoScale
     end
     
     
-    -- hud
+    ------------------------------------------------------
+    -- player HUD
+    
     Level.hud = GameObject.Get( "HUD" )
     Level.hud.Show = function()
         Level.menu.Hide()
@@ -34,22 +40,26 @@ function Behavior:Awake()
     Level.hud.Hide()
     
     
+    ---------------------------------------------------------------------
     -- In-game menu
+    
     local changeTeamGO = GameObject.Get( "Change Team" )
-    changeTeamGO:AddTag( "mouseinput" )
-    changeTeamGO.OnClick = function()
-        -- player.Die()
-        cprint( "change team" )
+    if server.game.gametype ~= "dm" then
+        changeTeamGO:AddTag( "mouseinput" )
+        changeTeamGO.OnClick = function()
+            if Client.isConnected then
+                ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = { changeTeamButtonClicked = true } } )
+            else -- offline, is never the server as the button does not exists on the server
+                ServerGO.client:ChangePlayerTeam( { playerId = Client.player.id } )
+            end
+        end
+    else
+        changeTeamGO:Destroy()
+        changeTeamGO = nil
     end
     
     local spawnGO = GameObject.Get( "Menu.Buttons.Spawn" )
     spawnGO:AddTag( "mouseinput" )
-    --[[spawnGO.OnClick = function()
-        if not Client.player.isSpawned then
-           --cprint( "spawn" )
-           SpawnPlayer()
-        end
-    end]]
     
     local disconnectGO = GameObject.Get( "Disconnect" )
     disconnectGO:AddTag( "mouseinput" )
@@ -64,7 +74,8 @@ function Behavior:Awake()
         disconnectGO.textRenderer.text = "Exit to main menu"
     end
     
-    
+    -- tutoGO is handled in Start()
+
     Level.menu = GameObject.Get( "Menu" )
     Level.menu.Show = function()
         -- lock the player
@@ -75,24 +86,32 @@ function Behavior:Awake()
         -- update buttons
         if IsClient then
             if Client.player.isSpawned then
+                if changeTeamGO then
+                    --changeTeamGO.textRenderer.text = ""
+                    changeTeamGO.textRenderer.opacity = 0
+                end
+                
                 spawnGO.textRenderer.text = "Suicide"
                 spawnGO.OnClick = function()
                     if Client.isConnected then
                         ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = { spawnButtonClicked = true } } )
-                        return
+                    else
+                        CharacterScript:Die( Client.player.id )
                     end
-                    
-                    CharacterScript:Die()
                 end
             else
+                if changeTeamGO then
+                    --changeTeamGO.textRenderer.text = "Change Team"
+                    changeTeamGO.textRenderer.opacity = 1
+                end
+                
                 spawnGO.textRenderer.text = "Spawn"
                 spawnGO.OnClick = function()
                     if Client.isConnected then
                         ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = { spawnButtonClicked = true } } )
-                        return
+                    else
+                        ServerGO.client:SpawnPlayer()
                     end
-                    
-                    ServerGO.client:SpawnPlayer()
                 end
             end
             
@@ -120,7 +139,9 @@ function Behavior:Awake()
     --Level.menu.Show() -- in Start()
     
     
-    -- scoreboard
+    ------------------------------------------------------------------------
+    -- Scoreboard
+    
     Level.scoreboard = GameObject.Get( "Scoreboard" )
     Level.scoreboard.Show = function()
         Level.scoreboard.transform.localPosition = Vector3(0,0,-4) -- -4 instead of -5 to put the scoreboard in front of the hud or menu
@@ -139,6 +160,20 @@ function Behavior:Awake()
     local levelGO = Level.scoreboard:GetChild( "Level", true )
     levelGO.textRenderer.text = "Level : "..Scene.current.path
     
+    Level.timerGO = Level.scoreboard:GetChild( "Timer", true )
+    Level.timerGO.Update = function( time )
+        local minutes = math.floor( time/60 )
+        if minutes < 10 then
+            minutes = "0"..minutes
+        end
+        local seconds = math.round( time % 60 )
+        if seconds < 10 then
+            seconds = "0"..seconds
+        end
+        Level.timerGO.textRenderer.text = minutes..":"..seconds    
+    end
+    -- Update tweener created in Gametype.init()
+    
     local nameListGO = Level.scoreboard:GetChild( "Name.List", true )
     local kdListGO = Level.scoreboard:GetChild( "KD.List", true )
     --local scoreListGO = GameObject.Get( "Scoreboard.Score.List" )        
@@ -149,7 +184,7 @@ function Behavior:Awake()
             local playersByScore = {}
             
             for id, player in pairs( server.playersById ) do
-                table.insert( playersByScore, table.merge( player ) )
+                table.insert( playersByScore, table.copy( player ) )
             end
             
             table.sortby( playersByScore, "kills", "desc" ) -- "desc" = big values first
@@ -168,7 +203,7 @@ function Behavior:Awake()
                 end
             else
                 nameListText = "----- Team 1 -----;"
-                kdListText = ";"
+                kdListText = " ;" -- leave the space at the beginning so that the newLine char is taken into account (to be fixed in TextAreas)
                 for i, player in ipairs( playersByScore ) do
                     if player.team == 1 then
                         nameListText = nameListText..player.name..";"
@@ -177,7 +212,7 @@ function Behavior:Awake()
                 end
                 
                 nameListText = nameListText..";----- Team 2 -----;"
-                kdListText = ";;"
+                kdListText = kdListText..";;"
                 for i, player in ipairs( playersByScore ) do
                     if player.team == 2 then
                         nameListText = nameListText..player.name..";"
@@ -194,6 +229,7 @@ function Behavior:Awake()
     end
     
     
+    ------------------------------------------------------
     -- Tchat
     -- use the in-game tchat as Console and Alert
     
@@ -218,24 +254,29 @@ function Behavior:Awake()
         end
     end
     
-    
-    
-    if IsServer then   
-        changeTeamGO:Destroy()
+    if IsServer then
+        if changeTeamGO then
+            changeTeamGO:Destroy()
+        end
         spawnGO:Destroy()
         disconnectGO:Destroy()
         -- Server admin use the tchat to control things
     end
 end
 
+
 function Behavior:Start()
-    -- in Start to wait for the input nd textArea to be created
+    -- in Start to wait for the input and textArea to be created
     local tutoGO = GameObject.Get( "Tuto" )
-    tutoGO.textArea.areaWidth = (CS.Screen.GetSize().x-100).."px"
+    if IsClient then
+        tutoGO.hud.position = Vector2( "30%", 10 )
+    end
+    tutoGO.textArea.areaWidth = (CS.Screen.GetSize().x - tutoGO.hud.position.x - 10).."px"
     
     local commonText = "Press Escape to toggle menu;Press T to write in the tchat (Enter to send, Escape to unfocus);"
     local playerText = commonText.."Move like in any oter FPS;"
-    local serverText = commonText.."Move with ZQ/WASD/Arrows; Toggle mouse cursor with right click;; Send commands via the tchat :;/kick [player id] (to kick player);/ip (to get your ip);/stopserver (to stop the server and go back to the server manager);/loadscene [scene path] [gametype] (to load the provided menu/level with the provided gametype);"
+    local serverText = commonText.."Move with ZQ/WASD/Arrows; Toggle mouse cursor with right click;; Send commands via the tchat :;/kick [player id] (to kick player);/ip (to get your ip);/stopserver (to stop the server and go back to the server manager);/loadscene [scene path] [gametype] (to load the provided menu/level with the provided gametype);Put double quotes (\") arond the scene path if it has spaces in it"
+    
     if IsServer then
         tutoGO.textArea.text = serverText
     else

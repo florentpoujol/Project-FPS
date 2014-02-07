@@ -1,8 +1,6 @@
 
 function Behavior:Awake()
-    --LocalServer = Server.New( ServerConfig ) -- is replaced in Server.Start() and unset in Server.Connect()
-    --LocalServer.isOffline = true
-    -- Done in Client;Init()
+    -- LocalServer is set in Client.Init()
 
 
     Daneel.Storage.Load( "ProjectFPS_ScreenSize", CS.Screen.GetSize(), function( screenSize, error )
@@ -19,6 +17,8 @@ function Behavior:Awake()
     local testLevel = GameObject.Get( "Test Level" )
     testLevel:AddTag( "button" )
     testLevel.OnClick = function()
+        --Client.Init() done in Client:Awake()
+        print(Player.name, Client.player.name, LocalServer.playersById[ -1 ].name)
         Scene.Load( "Levels/Test Level" )
     end
     
@@ -58,6 +58,7 @@ function Behavior:Awake()
         
         inputGO.textRenderer.text = playerName
         Player.name = playerName
+        Client.player.name = playerName
     end )
     
    
@@ -152,7 +153,7 @@ function Behavior:Awake()
     local stopText = "Stop server"
     
     buttonGO.OnClick = function()
-        if LocalServer then
+        if IsServer then
             Server.Stop( function( server, data )
                 if data and data.deleteFromServerBrowser then
                     Alert.SetText( "Successfully removed the server from the server browser" )
@@ -171,7 +172,7 @@ function Behavior:Awake()
         end
     end
     
-    if LocalServer then
+    if IsServer then
         buttonGO.textRenderer.text = stopText
     else
         buttonGO.textRenderer.text = startText

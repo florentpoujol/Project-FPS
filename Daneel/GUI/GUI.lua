@@ -600,7 +600,8 @@ function GUI.ProgressBar.SetValue(progressBar, value)
     progressBar.minLength = GUI.ToSceneUnit(progressBar.minLength)
     progressBar.maxLength = GUI.ToSceneUnit(progressBar.maxLength)
     local currentValue = progressBar:GetValue()
-
+    
+    
     if value ~= currentValue then
         if value ~= oldValue and Daneel.Config.debug.enableDebug then
             print(errorHead.." WARNING : value with value '"..oldValue.."' is out of its boundaries : min='"..minVal.."', max='"..maxVal.."'")
@@ -615,6 +616,7 @@ function GUI.ProgressBar.SetValue(progressBar, value)
         -- newLength = scale only because the base size of the model is of one unit at a scale of one
 
         Daneel.Event.Fire(progressBar, "OnUpdate", progressBar)
+        
     end
     Daneel.Debug.StackTrace.EndFunction()
 end
@@ -673,14 +675,14 @@ function GUI.ProgressBar.GetValue(progressBar, getAsPercentage)
     Daneel.Debug.CheckArgType(progressBar, "progressBar", "ProgressBar", errorHead)
     Daneel.Debug.CheckOptionalArgType(getAsPercentage, "getAsPercentage", "boolean", errorHead)
 
-    local scale = progressBar.gameObject.transform:GetLocalScale().x
+    local scale = math.round( progressBar.gameObject.transform:GetLocalScale().x, 2 )
     local value = (scale - progressBar.minLength) / (progressBar.maxLength - progressBar.minLength)
     if getAsPercentage == true then
         value = value * 100
     else
         value = (progressBar.maxValue - progressBar.minValue) * value + progressBar.minValue
     end
-    value = math.round(value)
+
     Daneel.Debug.StackTrace.EndFunction()
     return value
 end

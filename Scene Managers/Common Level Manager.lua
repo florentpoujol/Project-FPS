@@ -4,7 +4,7 @@ removeGizmos boolean True
 
 function Behavior:Awake()
     local mapGO = GameObject.Get( "Map" )
-    
+    Level.mapGO = mapGO
     
     -- level builder
     --[[ -- not used at this time
@@ -41,7 +41,7 @@ function Behavior:Start()
     end
     
     local server = GetServer()
-    InitGametype( server.game.gametype )
+    Gametype.Init( server.game.gametype )
     
     if Client.isConnected then
         Client.player.isReady = true -- set to false in Server:LoadLevel()

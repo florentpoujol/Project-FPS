@@ -20,8 +20,14 @@ Prefabs = {
     -- or
     -- alias = table
     
-    spawn1 = { tags = { "spawn", "team1", "dm", "tdm", "ctf", "gizmo" } },
-    spawn2 = { tags = { "spawn", "team2", "dm", "tdm", "ctf", "gizmo" } }
+    spawn1 = { 
+        name = "spawn team1 dm tdm ctf",
+        tags = { "spawn", "team1", "dm", "tdm", "ctf", "gizmo" }
+    },
+    spawn2 = { 
+        name = "spawn team2 dm tdm ctf",
+        tags = { "spawn", "team2", "dm", "tdm", "ctf", "gizmo" }
+    }
 }
 
 
@@ -42,12 +48,7 @@ function Behavior:Awake()
         local eulerAngles = sourceGO.transform:GetEulerAngles()
         local localScale = sourceGO.transform:GetLocalScale()
         
-
-        local path = self.Prefab
-        if Prefabs[ path ] ~= nil then
-            path = Prefabs[ path ]
-        end
-        
+        local path = Prefabs[ self.Prefab ] or self.Prefab
         local scene = nil
         if type( path ) == "string" then
             scene = CS.FindAsset( path, "Scene" )
@@ -75,6 +76,9 @@ function Behavior:Awake()
                     gameObject.physics:WarpEulerAngles( eulerAngles )
                 else
                     gameObject.transform:SetPosition( position )
+                    if self.Prefab == "spawn2" then
+                        --print( "set euler angles", eulerAngles )
+                    end
                     gameObject.transform:SetEulerAngles( eulerAngles )
                     
                 end

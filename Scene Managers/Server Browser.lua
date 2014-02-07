@@ -78,6 +78,7 @@ function Behavior:BuildServersList( servers )
         server = table.shift( servers )
         
         if server == nil then -- no more servers to test
+            Alert.SetText( "" )
             if serverCount == 0 then
                 Alert.SetText( "No server found." )
                 self.serversListGO.textArea.text = "No server found."
@@ -132,7 +133,7 @@ function Behavior:BuildServersList( servers )
                         -- fired in Client:OnConnected() with the data of the recently connected server
                         -- update the text with server's data (name, playerCount, ...)
                         go.server = _server
-                        textRenderer.text = textRenderer.text.." "..#_server.playerIds.."/".._server.maxPlayerCount.." ".._server.scenePath
+                        textRenderer.text = textRenderer.text.." | "..#_server.playerIds.."/".._server.maxPlayerCount.." | ".._server.game.gametype.." | ".._server.game.scenePath
                         return false
                     end
                                         

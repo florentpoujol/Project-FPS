@@ -2,7 +2,7 @@
 ServerGO = nil -- the game object this script is attached to
 
 LocalServer = nil -- is set in Server.Start() with a server instance if the player creates a local server (unset in Server.Stop())
--- OR this is the offline server instance (set in Main Menu Awake()
+-- OR this is the offline server instance (set in Client.Init())
 
 -- Server data is read from a .json file acceessible via internet and the CS.Web API
 -- For now, we will just use the ServerConfig table found in the "Game Config" script instead
@@ -271,7 +271,7 @@ function Behavior:Awake()
             }
             
             data.server.playersById = {}
-            data.server.playerIds = nil
+            -- data.server.playerIds = nil -- let that, used in Server browser
             
             -- fill data.server.playersById
             for id, player in pairs( LocalServer.playersById ) do
@@ -336,7 +336,7 @@ function Behavior:Update()
                 sendMessage = true
                 data.dataByPlayerId[ id ] = {
                     position = player.characterGO.transform:GetPosition(),
-                    eulerAngles = player.characterGO.transform:GetEulerAngles(),
+                    eulerAngles = player.characterGO.s.modelGO.transform:GetEulerAngles(),
                 }
             end
         end
@@ -433,21 +433,33 @@ end
 -- Data contains the player input
 function Behavior:SetCharacterInput( data, playerId )
 
-    -- spawn
+    -- spawn / suicide
     if data.input.spawnButtonClicked then
         --cprint( "Player #"..playerId.." wants to spawn !" )
         
         local player = LocalServer.playersById[ playerId ]
         if not player.isSpawned and not player.characterGO then
+            local spawnGO = Gametype.GetSpawn( player.team )
+            
             local data = {
-                position = GetSpawnPosition( player ),
-                playerId = playerId    
+                playerId = playerId,
+                position = spawnGO.transform.position,
+                eulerAngles = spawnGO.transform.eulerAngles,
             }
             
             self.gameObject.networkSync:SendMessageToPlayers( "SpawnPlayer", data, LocalServer.playerIds ) -- why not leave player data be broadcasted via Client:UpdateGameState() and let it creates the game objects ?
             self.gameObject.client:SpawnPlayer( data )
+        
+        else -- suicide
+            local player = GetPlayer( playerId )
+            player.messagesToSend.Die = { playerId }
+            player.characterGO.s:Die( playerId )
         end
-
+    
+    -- changeteam
+    elseif data.input.changeTeamButtonClicked then
+        self.gameObject.client:ChangePlayerTeam( { playerId = playerId } ) 
+    
     else
         LocalServer.playersById[ playerId ].input = data.input
     end

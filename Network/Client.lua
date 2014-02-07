@@ -34,7 +34,7 @@ function Client.Init()
     
     -- for offline
     if not LocalServer then
-        LocalServer = Server.New( Server.Config )
+        LocalServer = Server.New( ServerConfig )
         LocalServer.isOffline = true
     end
     
@@ -164,10 +164,12 @@ function Behavior:OnPlayerJoined( player )
         
     if player.id ~= Client.player.id then -- On server and Client when the new player is another player
         Tchat.AddLine( "Player #"..player.id.." '"..player.name.."' joined." )
-    
-    else -- newly connected player
-        Client.player = table.merge( player )
+        Level.scoreboard.Update()
         
+    else -- newly connected player
+        Client.player = table.merge( Client.player, player ) -- the only new data at this point is the team
+        server.playersById[ player.id ] = Client.player
+                
         Daneel.Event.Listen( 
             "OnStart", 
             function()
@@ -182,7 +184,7 @@ function Behavior:OnPlayerJoined( player )
         -- LoadLevel() below is called next by the server
     end
     
-    Level.scoreboard.Update()
+    
     
     -- The new character is created on the server and all pre-existing players only when it spawns
     
@@ -251,7 +253,7 @@ CS.Network.RegisterMessageHandler( Behavior.LoadLevel, CS.Network.MessageSide.Pl
 -- or called from Client:UpdateGameState(),
 -- or from the HUD (without data),
 --
--- Data argument contains the position and playerId
+-- Data argument contains the playerId and the spawn's position+eulerAngles
 function Behavior:SpawnPlayer( data )
     if not data then -- offline
         data = {
@@ -259,29 +261,82 @@ function Behavior:SpawnPlayer( data )
         }
     end
     
-    local server = GetServer()
     local player = GetPlayer( data.playerId )
-    player.isSpawned = true
     
-    if not data.position then -- offline
-        data.position = GetSpawnPosition( player )
+    if not data.position or not data.eulerAngles then -- offline
+        local spawnGO = Gametype.GetSpawn( player.team )
+        data.position = spawnGO.transform.position
+        data.eulerAngles = spawnGO.transform.eulerAngles
     end
     
     local go = GameObject.New( CharacterPrefab )
     go.physics:WarpPosition( Vector3( data.position ) )
+    go.physics:WarpEulerAngles( Vector3( data.eulerAngles ) )
 
     go.s.playerId = data.playerId
-    go.s.team = player.team
+    go.s:SetTeam( player.team )
     player.characterGO = go
+    player.isSpawned = true
     
-    if player.id == Client.player.id then
+    if IsClient and data.playerId == Client.player.id then
         -- give control of the character to the player
         player.characterGO.s:SetupPlayableCharacter()
     end
-    
-    print(player.name.." ("..player.id..") has spawned") -- should not cprint(), could be used for cheat
+
+    --print(player.name.." ("..player.id..") has spawned") -- should not cprint(), could be used for cheat
 end
 CS.Network.RegisterMessageHandler( Behavior.SpawnPlayer, CS.Network.MessageSide.Players )
+
+
+-- Called from HUD script "Change Team" button OnClick event (when offline)
+-- or from Server:SetPlayerInput() (when on the server)
+-- or from the server (when connected client)
+--
+-- data contains the playerId, 
+-- and the position and eulerAngles of the new spawn point (when called from the server)
+function Behavior:ChangePlayerTeam( data )
+    if GetServer().game.gametype == "dm" then
+        return -- or force team at 1 ?
+    end
+    
+    local player = GetPlayer( data.playerId )
+    
+    if player.isSpawned or player.characterGO then -- don't change team when player is alive
+        return
+    end
+    
+    if player.team == 1 then
+        player.team = 2
+    else
+        player.team = 1
+    end
+    
+    --[[
+    if player.isSpawned and player.characterGO then
+        player.isSpawned = false
+        player.characterGO:Destroy()
+        player.characterGO = nil
+        
+        if IsServer then
+            local spawnGO = Gametype.GetSpawn( player.team )
+            data.position = spawnGO.transform.position
+            data.eulerAngles = spawnGO.transform.position
+        end
+        
+        self:SpawnPlayer( data )
+    elseif IsClient and Client.player.id == data.playerId then
+        Gametype.ResetLevelSpawn( player.team )
+    end
+    ]]
+    if IsServer then
+        self.gameObject.networkSync:SendMessageToPlayers( "ChangePlayerTeam", data, LocalServer.playerIds )
+    elseif Client.player.id == player.id then
+        Gametype.ResetLevelSpawn( player.team )
+    end
+    
+    --print(player.name.." ("..player.id..") changed team", IsServer)
+end
+CS.Network.RegisterMessageHandler( Behavior.ChangePlayerTeam, CS.Network.MessageSide.Players )
 
 
 -- Update character and objectives position, + other game states
@@ -302,7 +357,8 @@ function Behavior:UpdateGameState( data )
                     end
                     
                     if playerData.eulerAngles then
-                        player.characterGO.physics:WarpEulerAngles( Vector3( playerData.eulerAngles ) )
+                        player.characterGO.s.modelGO.transform:SetEulerAngles( Vector3( playerData.eulerAngles )  )
+                        --player.characterGO.physics:WarpEulerAngles( Vector3( playerData.eulerAngles ) )
                         --player.characterGO.transform:SetEulerAngles( Vector3( playerData.eulerAngles ) ) -- SetEulerAngles() doen't work here, yet it does in "Character Control" script
                     end
                     
@@ -313,8 +369,9 @@ function Behavior:UpdateGameState( data )
                     end
                 else
                     self:SpawnPlayer( {
-                        position = playerData.position,
                         playerId = id,
+                        position = playerData.position,
+                        eulerAngles = playerData.eulerAngles,
                     } )
                 end
             end -- end for

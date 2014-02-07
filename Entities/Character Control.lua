@@ -10,17 +10,20 @@ function Behavior:Awake()
     self.gameObject.s = self
     self.gameObject:AddTag( "character" )
     
-    self.mapGO = GameObject.Get( "Map" )
     self.modelGO = self.gameObject:GetChild( "Model" )
     self.modelGO:AddTag( "characterModel" )
-    --self.trailGO = self.gameObject:GetChild( "Trail" )
-    self.cameraGO = self.gameObject:GetChild( "Camera" )
+    self.cameraGO = self.gameObject:GetChild( "Camera", true )
+    self.crosshairGO = self.cameraGO:GetChild( "Crosshair" )
     
-    
+    --[[local healthbarGO = self.gameObject:GetChild( "Healthbar" )
+    self.healthbarGO = healthbarGO:GetChild( "Bar" )
+    self.healthbarBackgroundGO = healthbarGO:GetChild( "Background" )]]
+       
     -- movements
-    self.rotationSpeed = 0.1
-    self.walkSpeed = 35.0
-    self.jumpSpeed = 3500
+    local server = GetServer()
+    self.rotationSpeed = server.game.character.rotationSpeed
+    self.walkSpeed = server.game.character.walkSpeed
+    self.jumpSpeed = server.game.character.jumpSpeed
     
     self.lookAngles = Vector3(0)
 
@@ -29,37 +32,55 @@ function Behavior:Awake()
      
     
     -- shooting
-    self.maxHealth = 2
+    self.maxHealth = server.game.character.health
     self.health = self.maxHealth
+    --[[
+    self.healthbarGO:AddComponent( "ProgressBar", {
+        maxValue = self.maxHealth,
+        maxLength = "4u",
+        value = self.maxHealth
+    } )
+    self.healthbarBackgroundGO:AddComponent( "ProgressBar", {
+        maxValue = self.maxHealth,
+        maxLength = "4.2u",
+        value = self.maxHealth
+    } )
+    ]]
     
-    self.damage = 1
-    self.shootInterval = 20 -- 20 frame = 3 shoot per second
+    self.damage = server.game.character.weaponDamage
+    self.shootRate = server.game.character.shootRate
     self.lastShootFrame = 0
-    --self.maxDamage = 10 -- not necessarilly equal to self.maxHealth
-    --self.chargeFrame = 0
-    --self.maxChargeFrame = 120 -- time in frames to reach max charge
-    --self.lastDamage = 0 -- ?
-    -- players can hold the left mouse button to "charge" the laser and do more than 1 damage
     
     self.shootRay = Ray()
-    
     
     --
     self.frameCount = 0
     self.isLocked = true
     
+    if self.playerId == nil then -- set in Client:SpawnPlayer()
+        self.playerId = -1
+    end
+        
+    self:SetTeam()
+        
     if self.isPlayable then
         self:SetupPlayableCharacter()
     end
     
-    if self.playerId == nil then -- set in Client:PlayerSpawned()
-        self.playerId = -1
+    if Client.isConnected then
+        self.gameObject.physics:SetFreezePosition( true, true, true )
+        self.gameObject.physics:SetFreezeRotation( true, true, true )
     end
-    
-    if self.team == nil then -- set in Client:PlayerSpawned()
-        self.team = 1
+end
+
+
+function Behavior:Start()
+    -- in Start() to wait for the self.playerId to be set between the calls to Awake() and Start() in Client:SpawnPlayer()
+    if self.playerId > 0 then
+        local player = GetPlayer( self.playerId )
+        self.gameObject.name = "Character: "..player.name
+        self.modelGO.name = "Character model: "..player.name
     end
-    
 end
 
 
@@ -70,7 +91,10 @@ function Behavior:SetupPlayableCharacter()
     self.isPlayable = true
     
     -- remove level spawn camera
-    Level.levelSpawns[ self.team ].camera:Destroy()
+    local camera = Level.levelSpawns[ self.team ].camera
+    if camera then
+        camera:Destroy()
+    end
     
     -- set player camera
     self.cameraGO:Set( { camera = { fOV = 60 } } )
@@ -82,10 +106,23 @@ function Behavior:SetupPlayableCharacter()
     
     self.hud = {}
     self.hud.isOnGroundGO = hudGO:GetChild( "IsOnGround", true )
-    --self.hud.isFallingGO = hudGO:GetChild( "IsFalling", true )
-    --self.hud.isFallingGO.textRenderer.text = ""
-    self.hud.groundDistance = hudGO:GetChild( "GroundDistance", true )      
-    --self.hud.damages = hudGO:GetChild( "Damages.Text", true )   
+    self.hud.groundDistance = hudGO:GetChild( "GroundDistance", true )
+    local playerHealthGO = hudGO:GetChild( "Player Health", true )
+    -- self.hud.healthbar is the ProgressBar component
+    self.hud.healthbar = playerHealthGO:GetChild( "Healthbar" ):AddComponent( "ProgressBar", {
+        maxValue = self.maxHealth,
+        maxLength = 6,
+        value = self.maxHealth,
+    } )
+    -- background
+    playerHealthGO:GetChild( "Background" ):AddComponent( "ProgressBar", {
+        maxValue = self.maxHealth,
+        maxLength = 6.2,
+        value = self.maxHealth,
+        height = 1.2,
+    } )
+    self.hud.background = playerHealthGO:GetChild( "Background" )
+
     
     Level.hud.Show()
     
@@ -96,19 +133,52 @@ function Behavior:SetupPlayableCharacter()
 end
 
 
+-- Set the self.team property and update the character's look
+function Behavior:SetTeam( team )
+    if team == nil then
+        team = self.team
+    end
+    if team == nil then
+        team = 1
+    end
+    
+    local oTeam = 2
+    if team == 2 then oTeam = 1 end
+    
+    --self.gameObject:RemoveTag( "team"..oTeam ) -- not used yet
+    --self.gameObject:AddTag( "team"..team )
+    
+    self.modelGO:RemoveTag( "team"..oTeam )
+    self.modelGO:AddTag( "team"..team ) -- used in Shoot() below
+    
+    self.team = team
+    if team > 0 then
+        self.modelGO.modelRenderer.model = Team[ team ].models.character.body
+        self.crosshairGO.modelRenderer.model = Team[ team ].models.crosshair
+    end
+end
 
+local first = false
 
 function Behavior:Update()
+    if not first then
+        first = true
+        print( self.health, self.maxHealth )
+        print( self.hud.healthbar.value, self.hud.healthbar.maxValue, self.hud.healthbar.maxLength, self.hud.healthbar.height )
+        print( self.hud.background.progressBar.value, self.hud.background.progressBar.maxValue, self.hud.background.progressBar.maxLength, self.hud.background.progressBar.height )
+
+    end
+
     if IsClient and not self.isPlayable then 
         return
     end
     -- runs when server or when client and is playable
-
+    
     self.frameCount = self.frameCount + 1
     
     local server = GetServer()
     local playerId = self.playerId -- -1 when offline
-    local player = GetPlayer()
+    local player = GetPlayer( playerId )
     
     if player ~= nil and player.hasLeft then
         player.characterGO = nil
@@ -118,7 +188,7 @@ function Behavior:Update()
     end
     
     if IsServer and player == nil then
-        -- happens sometimes
+        -- happens sometimes ?
         print("Character:Update() : player is nil on LocalServer", self.playerId )
         table.print( LocalServer.playersById )
         self.gameObject:Destroy()
@@ -129,48 +199,56 @@ function Behavior:Update()
     
     local input = {
         spaceWasJustPressed = false,
-        leftMouseWasJustPressed = false,            
+        leftMouseWasJustPressed = false,
+        leftMouseIsDown = false,
         verticalAxis = 0,
         horizontalAxis = 0,
         mouseDelta = {x=0,y=0},
     }
     
     if Client.isConnected then -- client online
-        input = {
-            -- sends the raw input, let the server check for other conditions
-            spaceWasJustPressed = CS.Input.WasButtonJustPressed( "Space" ),
-            leftMouseWasJustPressed = CS.Input.WasButtonJustPressed( "LeftMouse" ),            
-            verticalAxis = CS.Input.GetAxisValue( "Vertical" ),
-            horizontalAxis = CS.Input.GetAxisValue( "Horizontal" ),
-            mouseDelta = CS.Input.GetMouseDelta(),
-        }
-        if 
-            input.spaceWasJustPressed == true or
-            input.leftMouseWasJustPressed == true or
-            input.verticalAxis ~= 0 or
-            input.horizontalAxis ~= 0 or
-            input.mouseDelta.x ~= 0 or
-            input.mouseDelta.y ~= 0
-        then
-            ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = input } )
+        if not Level.menu.isDisplayed then
+            input = {
+                -- sends the raw input, let the server check for other conditions
+                spaceWasJustPressed = CS.Input.WasButtonJustPressed( "Space" ),
+                leftMouseWasJustPressed = CS.Input.WasButtonJustPressed( "LeftMouse" ),
+                leftMouseIsDown = CS.Input.IsButtonDown( "LeftMouse" ),
+                verticalAxis = CS.Input.GetAxisValue( "Vertical" ),
+                horizontalAxis = CS.Input.GetAxisValue( "Horizontal" ),
+                mouseDelta = CS.Input.GetMouseDelta(),
+            }
+            if 
+                input.spaceWasJustPressed == true or
+                input.leftMouseWasJustPressed == true or
+                input.leftMouseIsDown == true or
+                input.verticalAxis ~= 0 or
+                input.horizontalAxis ~= 0 or
+                input.mouseDelta.x ~= 0 or
+                input.mouseDelta.y ~= 0
+            then
+                ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = input }, CS.Network.DeliveryMethod.ReliableOrdered, 1 )
+                -- 23/01/2014  some input are missed, they are sent but does seems to arrive on the server
+                -- noticeable
+            end
         end
         
         return
     
     elseif IsServer then -- server
         -- player.input has been set in Server:SetCharacterInput()
-        
         if player.input ~= nil then
             input = player.input 
             player.input = nil -- player.input will stays nil as long as Server:SetCharacterInput() isn't called (as long as the player don't do any input)    
         end
             
     elseif not self.isLocked then -- client offline
+        local tags = {"tchatfocused", "menudisplayed"}
         input = {
-            spaceWasJustPressed = CS.Input.WasButtonJustPressed( "Space", {"tchatfocused", "menudisplayed"}, false ),
-            leftMouseWasJustPressed = CS.Input.WasButtonJustPressed( "LeftMouse", {"tchatfocused", "menudisplayed"}, false ),            
-            verticalAxis = CS.Input.GetAxisValue( "Vertical", {"tchatfocused", "menudisplayed"}, false ),
-            horizontalAxis = CS.Input.GetAxisValue( "Horizontal", {"tchatfocused", "menudisplayed"}, false ),
+            spaceWasJustPressed = CS.Input.WasButtonJustPressed( "Space", tags, false ),
+            leftMouseWasJustPressed = CS.Input.WasButtonJustPressed( "LeftMouse", tags, false ),            
+            leftMouseIsDown = CS.Input.IsButtonDown( "LeftMouse", tags, false ),
+            verticalAxis = CS.Input.GetAxisValue( "Vertical", tags, false ),
+            horizontalAxis = CS.Input.GetAxisValue( "Horizontal", tags, false ),
             mouseDelta = CS.Input.GetMouseDelta(),
         }
     end
@@ -178,12 +256,13 @@ function Behavior:Update()
     
     -------------------
     
+    
     -- Movement code mostly ripped from the Character Control script of the Sky Arena project (7DFPS 2013)  
     
     -- Jumping
     local bottomRay = Ray:New( self.gameObject.transform:GetPosition(), -Vector3:Up() )
     
-    local groundDistance = bottomRay:IntersectsMapRenderer( self.mapGO.mapRenderer ) 
+    local groundDistance = bottomRay:IntersectsMapRenderer( Level.mapGO.mapRenderer ) 
     
     local lastIsOnGround = self.isOnGround
     self.isOnGround = false
@@ -209,7 +288,7 @@ function Behavior:Update()
     self.lookAngles.y = self.lookAngles.y - self.rotationSpeed * mouseDelta.x
     -- self.lookAngles.z always == 0
     
-    self.gameObject.transform:SetEulerAngles( Vector3:New( self.lookAngles ) ) -- I think this shouldn't work, but it does
+    self.modelGO.transform:SetEulerAngles( Vector3:New( self.lookAngles ) ) -- I think this shouldn't work, but it does
     
     -- self.gameObject.physics:WarpEulerAngles( Vector3:New( self.lookAngles ) ) 
     -- /!\ 05/01/2014 for some reason having WarpEulerAngles uncommented makes that the
@@ -234,9 +313,8 @@ function Behavior:Update()
     self.gameObject.physics:SetLinearVelocity( newVelocity )  
     
     -- shooting
-    if input.leftMouseWasJustPressed and self.lastShootFrame + self.shootInterval < self.frameCount then
+    if input.leftMouseIsDown and self.lastShootFrame + (60/self.shootRate) < self.frameCount then    
         self.lastShootFrame = self.frameCount
-        --self.damage = 1
         self:Shoot()
     end
 
@@ -263,27 +341,26 @@ function Behavior:Shoot()
     -- /!\ can't do that if the camera is not aligned with the character's main position
     -- just take the position and direction of the "gun" if any
 
-    local server = GetServer()
+    local mapHit = self.shootRay:IntersectsMapRenderer( Level.mapGO.mapRenderer, true )
     
-    local characters = {}
-    if server.game.friendlyFire then
-        characters = GameObject.GetWithTag( "characterModel" )
-    else
+    local tags = { "characterModel" }
+    local server = GetServer()
+    if not server.game.friendlyFire then
         -- firedly fire is OFF, only get the characters of the other team
-        local team = "team1"
-        if self.team == 1 then
-            team = "team2"
-        end
-        characters = GameObject.GetWithTag( { "characterModel", team } )
+        local otherTeam = 2
+        if self.team == 2 then otherTeam = 1 end
+       table.insert( tags, "team"..otherTeam )
     end
     
-    local mapHit = self.shootRay:IntersectsMapRenderer( self.mapGO.mapRenderer, true )
-    
+
+    local characters = GameObject.GetWithTag( tags )
     -- characters is the list of the character's "Model" game object (with the model renderer), child of the character's root game object
+    
     local characterHit = self.shootRay:Cast( characters, true )[1] -- true > sort by distance asc , first = closest
+    -- characterHit is a RaycastHit (or nil) with data on the closest player hit
+    --print("shoot", tags[1], tags[2], "#chars", #characters) 
     
-    
-    -- get the closest hit
+    -- get the closest hit (map or player)
     local hit = {}
     if
         characterHit ~= nil and
@@ -305,8 +382,6 @@ function Behavior:Shoot()
         end
     end
     
-        --cprint("ray2", self.shootRay)
-        --cprint("hit", hit)
     self:CreateShootLine( hit.hitLocation )
 end
 
@@ -330,7 +405,7 @@ function Behavior:CreateShootLine( endPosition, shootRay )
     
     local lineGO = GameObject.New( "Line", {
         transform = { position = shootRay.position },
-        modelRenderer = { model = "Lines/Red" },
+        modelRenderer = { model = Team[ self.team ].models.bulletTrail },
         lineRenderer = { endPosition = endPosition, width = 0.3 }
     } )
     
@@ -347,8 +422,8 @@ end
 -- amount (number) Amount of damage
 -- killerPlayerId (number) The playerId of the shooter
 function Behavior:TakeDamage( amount, killerPlayerId )
+    local player = GetPlayer( self.playerId )
     if IsServer then
-        local player = LocalServer.playersById[ self.playerId ]
         player.messagesToSend.TakeDamage = { 
             amount,
             killerPlayerId,
@@ -356,7 +431,13 @@ function Behavior:TakeDamage( amount, killerPlayerId )
     end
     
     self.health = self.health - amount
-    
+    if 
+        ( Client.isConnected and Client.player.id == player.id ) or
+        GetServer().isOffline
+    then
+        self.hud.healthbar.value = self.health
+    end
+     
     if not Client.isConnected and self.health <= 0 then -- offline or server
         self:Die( killerPlayerId )
         -- when connected, Die() is called directly by the server
@@ -364,15 +445,17 @@ function Behavior:TakeDamage( amount, killerPlayerId )
 end
 
 
+-- killerPlayerId (number) is of the player who fired the fatal shot
+-- may be nil 
+-- may by the same as the player id > this is a suicide
 function Behavior:Die( killerPlayerId )
     if self.isPlayable then
         Client.player.isSpawned = false
-        Level.levelSpawns[ Client.player.team ]:AddComponent( "Camera" )
-        Level.hudCamera.Recreate()
-    
+        Gametype.ResetLevelSpawn()
+        
         Level.menu.Show()
     end
-       
+    
     --
     local server = GetServer()
     local player = GetPlayer( self.playerId )
@@ -384,19 +467,24 @@ function Behavior:Die( killerPlayerId )
     end
     
     local killerName = Player.name
-    if killerPlayerId and killerPlayerId > -1 and server then
+    if killerPlayerId and killerPlayerId ~= self.playerId then -- not a suicide
         local killer = server.playersById[ killerPlayerId ]
         killerName = killer.name
         killer.kills = killer.kills + 1        
     end
     
     local deadName = "DeadName"
-    if player then
-        deadName = player.name
-        player.deaths = player.deaths + 1
+    deadName = player.name
+    player.deaths = player.deaths + 1
+    
+    local text = killerName.." has killed "..deadName
+    if not killerPlayerId then
+        text = deadName.." has died."
+    elseif killerPlayerId == self.playerId then
+        text = deadName.." committed suicide."
     end
     
-    Tchat.AddLine( killerName.." has killed "..deadName )
+    Tchat.AddLine( text )
     Level.scoreboard.Update()
     
     --

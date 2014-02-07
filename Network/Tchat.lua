@@ -112,6 +112,16 @@ AdminCmd = {
         Scene.Load( "Menus/Main Menu" )
     end,
     
+    changeteam = function( playerId )
+        playerId = tonumber(playerId)
+        local player = LocalServer.playersById[ playerId ]
+        if player == nil then
+            Tchat.AddLine( "Unknow player id "..playerId )
+        else
+            ServerGO.client:ChangePlayerTeam( { playerId = playerId } )
+        end
+    end,
+    
     --[[
     nextrotation = function( id )
         if id == nil then
