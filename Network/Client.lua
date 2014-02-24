@@ -232,6 +232,8 @@ function Behavior:LoadLevel( data )
     
     for id, player in pairs( server.playersById ) do
         player.isReady = false -- set to true locally in "Common Level Manager:Start()" or in Server:MarkPlayerReady() (useless to do and has not effect on clients)
+        player.characterGO = nil
+        player.isSpawned = false
         
         player.kills = 0
         player.deaths = 0
@@ -242,6 +244,9 @@ function Behavior:LoadLevel( data )
     end
     if data.scenePath ~= nil then
         server.game.scenePath = data.scenePath
+    end
+    if data.roundTime then
+        server.game.roundTime = data.roundTime
     end
     
     Scene.Load( server.game.scenePath )
@@ -311,23 +316,6 @@ function Behavior:ChangePlayerTeam( data )
         player.team = 1
     end
     
-    --[[
-    if player.isSpawned and player.characterGO then
-        player.isSpawned = false
-        player.characterGO:Destroy()
-        player.characterGO = nil
-        
-        if IsServer then
-            local spawnGO = Gametype.GetSpawn( player.team )
-            data.position = spawnGO.transform.position
-            data.eulerAngles = spawnGO.transform.position
-        end
-        
-        self:SpawnPlayer( data )
-    elseif IsClient and Client.player.id == data.playerId then
-        Gametype.ResetLevelSpawn( player.team )
-    end
-    ]]
     if IsServer then
         self.gameObject.networkSync:SendMessageToPlayers( "ChangePlayerTeam", data, LocalServer.playerIds )
     elseif Client.player.id == player.id then
@@ -343,7 +331,17 @@ CS.Network.RegisterMessageHandler( Behavior.ChangePlayerTeam, CS.Network.Message
 -- Called by Server:Update()
 -- game object referrenced in data that does not exists yet on this client are created.
 function Behavior:UpdateGameState( data )
+    if data.roundEnded then
+        Gametype.OnRoundEnd()
+    end 
+    
+
     if Client.player.isReady then
+        
+        if data.roundTime then
+            Level.timerGO.Update( data.roundTime )
+        end 
+    
         if data.dataByPlayerId then
             local server = GetServer()
         

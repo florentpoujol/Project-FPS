@@ -34,18 +34,6 @@ function Behavior:Awake()
     -- shooting
     self.maxHealth = server.game.character.health
     self.health = self.maxHealth
-    --[[
-    self.healthbarGO:AddComponent( "ProgressBar", {
-        maxValue = self.maxHealth,
-        maxLength = "4u",
-        value = self.maxHealth
-    } )
-    self.healthbarBackgroundGO:AddComponent( "ProgressBar", {
-        maxValue = self.maxHealth,
-        maxLength = "4.2u",
-        value = self.maxHealth
-    } )
-    ]]
     
     self.damage = server.game.character.weaponDamage
     self.shootRate = server.game.character.shootRate
@@ -144,10 +132,7 @@ function Behavior:SetTeam( team )
     
     local oTeam = 2
     if team == 2 then oTeam = 1 end
-    
-    --self.gameObject:RemoveTag( "team"..oTeam ) -- not used yet
-    --self.gameObject:AddTag( "team"..team )
-    
+       
     self.modelGO:RemoveTag( "team"..oTeam )
     self.modelGO:AddTag( "team"..team ) -- used in Shoot() below
     
@@ -161,14 +146,6 @@ end
 local first = false
 
 function Behavior:Update()
-    if not first then
-        first = true
-        print( self.health, self.maxHealth )
-        print( self.hud.healthbar.value, self.hud.healthbar.maxValue, self.hud.healthbar.maxLength, self.hud.healthbar.height )
-        print( self.hud.background.progressBar.value, self.hud.background.progressBar.maxValue, self.hud.background.progressBar.maxLength, self.hud.background.progressBar.height )
-
-    end
-
     if IsClient and not self.isPlayable then 
         return
     end
@@ -377,7 +354,7 @@ function Behavior:Shoot()
         
         -- target is nil if hit == mapHit
         if target ~= nil and target:HasTag( "character" ) then
-            cprint( self.gameObject, "has hit", target , "with damage", self.damage)
+            --cprint( self.gameObject, "has hit", target , "with damage", self.damage)
             target.s:TakeDamage( self.damage, self.playerId ) -- self.playerId is -1 when offline
         end
     end
@@ -402,11 +379,11 @@ function Behavior:CreateShootLine( endPosition, shootRay )
             shootRay,
         }
     end
-    
+      
     local lineGO = GameObject.New( "Line", {
         transform = { position = shootRay.position },
         modelRenderer = { model = Team[ self.team ].models.bulletTrail },
-        lineRenderer = { endPosition = endPosition, width = 0.3 }
+        lineRenderer = { endPosition = setmetatable( endPosition, Vector3 ), width = 0.3 }
     } )
     
     Tween.Tweener( {
@@ -448,17 +425,41 @@ end
 -- killerPlayerId (number) is of the player who fired the fatal shot
 -- may be nil 
 -- may by the same as the player id > this is a suicide
+-- may be negative > player die without notification and losing score (happens at the end of the round)
 function Behavior:Die( killerPlayerId )
-    if self.isPlayable then
-        Client.player.isSpawned = false
-        Gametype.ResetLevelSpawn()
+    local server = GetServer()
+    local player = GetPlayer( self.playerId )
+    
+    if killerPlayerId >= 0 then
+        local killerName = Player.name
+        if killerPlayerId and killerPlayerId ~= self.playerId then -- not a suicide
+            local killer = server.playersById[ killerPlayerId ]
+            killerName = killer.name
+            killer.kills = killer.kills + 1        
+        end
         
-        Level.menu.Show()
+        local deadName = "DeadName"
+        deadName = player.name
+        player.deaths = player.deaths + 1
+        
+        local text = killerName.." has killed "..deadName
+        if not killerPlayerId then
+            text = deadName.." has died."
+        elseif killerPlayerId == self.playerId then
+            text = deadName.." committed suicide."
+        end
+        
+        Tchat.AddLine( text )
+        Level.scoreboard.Update()
     end
     
     --
-    local server = GetServer()
-    local player = GetPlayer( self.playerId )
+    self.gameObject:Destroy()
+    
+    if player then -- 13/02/14 - why would it be nil ?
+        player.isSpawned = false
+        player.characterGO = nil
+    end
     
     if IsServer then
         player.messagesToSend.Die = {
@@ -466,31 +467,10 @@ function Behavior:Die( killerPlayerId )
         }
     end
     
-    local killerName = Player.name
-    if killerPlayerId and killerPlayerId ~= self.playerId then -- not a suicide
-        local killer = server.playersById[ killerPlayerId ]
-        killerName = killer.name
-        killer.kills = killer.kills + 1        
-    end
-    
-    local deadName = "DeadName"
-    deadName = player.name
-    player.deaths = player.deaths + 1
-    
-    local text = killerName.." has killed "..deadName
-    if not killerPlayerId then
-        text = deadName.." has died."
-    elseif killerPlayerId == self.playerId then
-        text = deadName.." committed suicide."
-    end
-    
-    Tchat.AddLine( text )
-    Level.scoreboard.Update()
-    
-    --
-    self.gameObject:Destroy()
-    if player then
-        player.isSpawned = false
-        player.characterGO = nil
+    if self.isPlayable then
+        Client.player.isSpawned = false
+        Gametype.ResetLevelSpawn( player.team )
+        
+        Level.menu.Show()
     end
 end

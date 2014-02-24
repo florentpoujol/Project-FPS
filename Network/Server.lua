@@ -3,13 +3,15 @@ ServerGO = nil -- the game object this script is attached to
 
 LocalServer = nil -- is set in Server.Start() with a server instance if the player creates a local server (unset in Server.Stop())
 -- OR this is the offline server instance (set in Client.Init())
+-- Is set when offline on online and server
+-- Is not set on connected client
 
 -- Server data is read from a .json file acceessible via internet and the CS.Web API
 -- For now, we will just use the ServerConfig table found in the "Game Config" script instead
 
 
 Server = {
-    configFilePath = "", -- set in Server Manager
+    configFilePath = "", -- set in Main menu
     
     --[[
     localData = { -- stores the data that is saved locally and that can be set by the server admin
@@ -139,6 +141,17 @@ function Server.UpdateServerBrowser( server, delete, callback )
     
 end
 
+function Server.GetConfig( callback )
+    CS.Web.Get( Server.configFilePath, nil, CS.Web.ResponseType.JSON, function( error, serverConfig )
+        if error then
+            Alert.SetText("Server file path couldn't be read with error :", error.message )
+        end
+        
+        if callback ~= nil then
+            callback( serverConfig )
+        end
+    end )
+end
 
 -- start the local server
 function Server.Start( callback )
@@ -147,19 +160,37 @@ function Server.Start( callback )
         return
     end
     
-    Alert.SetText( "Starting server" )
     CS.Network.Server.Start()
     
-    local server = Server.New( ServerConfig )
-    if not server.isPrivate then
-        server:UpdateServerBrowser( callback )   
+    
+    local start = function( config )
+        local server = Server.New( config )
+        if not server.isPrivate then
+            server:UpdateServerBrowser( callback )   
+        end
+        
+        LocalServer = server
+        IsClient = false
+        IsServer = true
+    
+        Scene.Load( server.game.scenePath )
     end
     
-    LocalServer = server
-    IsClient = false
-    IsServer = true
-
-    Scene.Load( server.game.scenePath )
+    
+    local serverConfig = ServerConfig
+    -- try to get the server config path
+    if Server.configFilePath:startswith( "http://" ) or Server.configFilePath:startswith( "https://" ) then
+        Server.GetConfig( function( config )
+            if config ~= nil then
+                Alert.SetText( "Sarting server with config at URL : "..Server.configFilePath )
+                start( config )
+                return
+            end
+        end )
+    end
+    
+    Alert.SetText( "Sarting server with default config." )
+    start( ServerConfig )
 end
 
 
@@ -331,9 +362,13 @@ function Behavior:Update()
     
     -- position and rotation
     if self.frameCount % 3 == 0 then
+        local tweener = Level.timerGO.updateTweener
+        if tweener then
+            data.roundTime = tweener.value
+        end
+        
         for id, player in pairs( LocalServer.playersById ) do
             if player.isSpawned and player.characterGO ~= nil and player.characterGO.inner ~= nil then
-                sendMessage = true
                 data.dataByPlayerId[ id ] = {
                     position = player.characterGO.transform:GetPosition(),
                     eulerAngles = player.characterGO.s.modelGO.transform:GetEulerAngles(),
@@ -341,9 +376,7 @@ function Behavior:Update()
             end
         end
     
-        if sendMessage then           
-            self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", data, LocalServer.playerIds, CS.Network.DeliveryMethod.UnreliableSequenced )
-        end
+        self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", data, LocalServer.playerIds, CS.Network.DeliveryMethod.UnreliableSequenced )
     end
     
     -- messagesToSend
@@ -406,7 +439,7 @@ function Behavior:RegisterPlayer( data, playerId )
         
         local data = {
             scenePath = LocalServer.game.scenePath,
-            gametype = LocalServer.game.gametype
+            gametype = LocalServer.game.gametype,
         }
         
         self.gameObject.networkSync:SendMessageToPlayers( "LoadLevel", data, { player.id } ) 

@@ -7,13 +7,6 @@ CS.Physics.SetGravity( Vector3:New( 0, -100, 0 ) )
 ServerBrowserAddress = "http://csserverbrowser.florentpoujol.fr/index.php"
 
 
---- Level Builder
---[[
-CS.FindAsset( "Tile Set 1", "TileSet" ).entitiesByBlockID = {
-    -- [blockId] = "scene path",
-}
-]]
-
 CS.FindAsset( "Test Map", "Map" ).levelBuilderBlocks = {
     {
         blockID = 4,
@@ -23,10 +16,13 @@ CS.FindAsset( "Test Map", "Map" ).levelBuilderBlocks = {
 }
 
 
+-- networksync ids
+-- 0 : Server
+-- 1 : Tchat
+-- 2 : Random map
 
-Game = {
-    
-}
+
+Game = {} -- 24/02 used ?
 
 
 Level = {
@@ -93,6 +89,8 @@ ServerConfig = {
         gametype = "tdm",
         friendlyFire = false,
         
+        --roundTime = 10, -- temp var set in Client:LoadLevel(), used in Gametype.Init()
+        
         -- gametype specific settings ?   
         dm = {
             --roundLimit = 1, -- rounds before going to the next rotation
@@ -102,7 +100,7 @@ ServerConfig = {
         
         tdm = {
             --roundLimit = 1, -- rounds before going to the next rotation
-            timeLimit = 15, -- seconds
+            timeLimit = 600, -- seconds
             --scoreLimit = 100, -- score limit per team (player in DM)
         },
         -- ...
@@ -129,6 +127,113 @@ ServerConfig = {
 }
 
 
+-- Commands the server admin can issue via the tchat
+AdminCmd = {
+    kick = function( playerId )
+        playerId = tonumber(playerId)
+        local player = LocalServer.playersById[ playerId ]
+        if player == nil then
+            Tchat.AddLine( "Unknow player id "..playerId )
+        else
+            ServerGO.server:DisconnectPlayer( playerId, "Kicked by server" )
+        end
+    end,
+    
+    ip = function() Client.GetIp() end,
+    
+    loadscene = function( path, gametype )
+        local scene = Asset( path, "Scene" )
+        if scene == nil then
+            Tchat.AddLine( "Unknow scene with path '"..path.."'" )
+            return
+        end
+        if gametype ~= nil then
+            Game.gametype = gametype
+            local server = Client.server or LocalServer
+            if server ~= nil then
+                server.gametype = gametype
+            end
+        end
+        
+        -- temp
+        --Scene.Load( scene )
+        
+        -- notify people of the server
+        local data = {
+            scenePath = path,
+            gametype = gametype
+        }
+        ServerGO.networkSync:SendMessageToPlayers( "LoadLevel", data, LocalServer.playerIds )
+        ServerGO.client:LoadLevel( data )
+    end,
+    
+    reloadscene = function()
+        local data = {
+            scenePath = Scene.current.path, -- Gametype.Config.scenePath
+            gametype = Gametype.Config.gametype
+        }
+        ServerGO.networkSync:SendMessageToPlayers( "LoadLevel", data, LocalServer.playerIds )
+        ServerGO.client:LoadLevel( data )
+    end,
+    
+    stopserver = function()
+        LocalServer.Stop()
+        CS.Input.UnlockMouse()
+        Scene.Load( "Menus/Main Menu" )
+    end,
+    
+    changeteam = function( playerId )
+        playerId = tonumber(playerId)
+        local player = LocalServer.playersById[ playerId ]
+        if player == nil then
+            Tchat.AddLine( "Unknow player id "..playerId )
+        else
+            ServerGO.client:ChangePlayerTeam( { playerId = playerId } )
+        end
+    end,
+    
+    settime = function( time )
+        local tweener = Level.timerGO.updateTweener
+        time = tonumber( time )
+        if tweener and type( time ) == "number" then
+            tweener.duration = time
+            tweener.startValue = time
+            tweener:Restart()
+            --ServerGO.networkSync:SendMessageToPlayers( "UpdateGameState", { roundTime = time }, LocalServer.playerIds )
+        end
+    end,
+    
+    
+    
+    --[[
+    nextrotation = function( id )
+        if id == nil then
+            id = LocalServer.currentRotationId + 1
+        end
+        
+        local rotation = LocalServer.rotations[ id ]
+        if rotation then
+            if rotation.gametype then
+                Game.gametype = rotation.gametype
+                LocalServer.gametype = rotation.gametype
+            end
+            
+            if rotation.scenePath then
+                LocalServer.scenePath = rotation.scenePath
+            end
+            
+            local data = {
+                scenePath = LocalServer.scenePath,
+                gametype = LocalServer.gametype
+            }
+            ServerGO.networkSync:SendMessageToPlayers( "LoadLevel", data, LocalServer.playerIds )
+            ServerGO.client:LoadLevel( data )
+        else
+            Tchat.AddLine( "Bad rotation id", id )
+        end
+    end,
+    ]]
+}
 
 
 function DaneelUserConfig()

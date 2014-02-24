@@ -1,4 +1,0 @@
-function Behavior:Awake()
-    
-    
-end

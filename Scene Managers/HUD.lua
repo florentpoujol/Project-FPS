@@ -43,6 +43,22 @@ function Behavior:Awake()
     ---------------------------------------------------------------------
     -- In-game menu
     
+    -- timer
+    Level.timerGO = GameObject.Get( "Timer" )
+    Level.timerGO.Update = function( time )
+        local minutes = math.floor( time/60 )
+        if minutes < 10 then
+            minutes = "0"..minutes
+        end
+        local seconds = math.round( time % 60 )
+        if seconds < 10 then
+            seconds = "0"..seconds
+        end
+        Level.timerGO.textRenderer.text = minutes..":"..seconds    
+    end
+    -- Update tweener created in Gametype.init()
+    
+    
     local changeTeamGO = GameObject.Get( "Change Team" )
     if server.game.gametype ~= "dm" then
         changeTeamGO:AddTag( "mouseinput" )
@@ -74,6 +90,8 @@ function Behavior:Awake()
         disconnectGO.textRenderer.text = "Exit to main menu"
     end
     
+    
+    
     -- tutoGO is handled in Start()
 
     Level.menu = GameObject.Get( "Menu" )
@@ -85,34 +103,31 @@ function Behavior:Awake()
     
         -- update buttons
         if IsClient then
-            if Client.player.isSpawned then
-                if changeTeamGO then
-                    --changeTeamGO.textRenderer.text = ""
-                    changeTeamGO.textRenderer.opacity = 0
-                end
-                
-                spawnGO.textRenderer.text = "Suicide"
-                spawnGO.OnClick = function()
-                    if Client.isConnected then
-                        ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = { spawnButtonClicked = true } } )
-                    else
-                        CharacterScript:Die( Client.player.id )
+            if not Gametype.roundEnded then
+                if Client.player.isSpawned then                    
+                    spawnGO.textRenderer.text = "Suicide"
+                    spawnGO.OnClick = function()
+                        if not Gametype.roundEnded then
+                            if Client.isConnected then
+                                ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = { spawnButtonClicked = true } } )
+                            else
+                                CharacterScript:Die( Client.player.id )
+                            end
+                        end
+                    end
+                else                    
+                    spawnGO.textRenderer.text = "Spawn"
+                    spawnGO.OnClick = function()
+                        if Client.isConnected then
+                            ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = { spawnButtonClicked = true } } )
+                        else
+                            ServerGO.client:SpawnPlayer()
+                        end
                     end
                 end
             else
-                if changeTeamGO then
-                    --changeTeamGO.textRenderer.text = "Change Team"
-                    changeTeamGO.textRenderer.opacity = 1
-                end
-                
-                spawnGO.textRenderer.text = "Spawn"
-                spawnGO.OnClick = function()
-                    if Client.isConnected then
-                        ServerGO.networkSync:SendMessageToServer( "SetCharacterInput", { input = { spawnButtonClicked = true } } )
-                    else
-                        ServerGO.client:SpawnPlayer()
-                    end
-                end
+                changeTeamGO.textRenderer.text = ""
+                spawnGO.textRenderer.text = ""
             end
             
             CS.Input.UnlockMouse()
@@ -159,20 +174,6 @@ function Behavior:Awake()
     
     local levelGO = Level.scoreboard:GetChild( "Level", true )
     levelGO.textRenderer.text = "Level : "..Scene.current.path
-    
-    Level.timerGO = Level.scoreboard:GetChild( "Timer", true )
-    Level.timerGO.Update = function( time )
-        local minutes = math.floor( time/60 )
-        if minutes < 10 then
-            minutes = "0"..minutes
-        end
-        local seconds = math.round( time % 60 )
-        if seconds < 10 then
-            seconds = "0"..seconds
-        end
-        Level.timerGO.textRenderer.text = minutes..":"..seconds    
-    end
-    -- Update tweener created in Gametype.init()
     
     local nameListGO = Level.scoreboard:GetChild( "Name.List", true )
     local kdListGO = Level.scoreboard:GetChild( "KD.List", true )
@@ -273,9 +274,9 @@ function Behavior:Start()
     end
     tutoGO.textArea.areaWidth = (CS.Screen.GetSize().x - tutoGO.hud.position.x - 10).."px"
     
-    local commonText = "Press Escape to toggle menu;Press T to write in the tchat (Enter to send, Escape to unfocus);"
+    local commonText = "Press Escape to toggle menu;Press Tab to see the score board;Press T to write in the tchat (Enter to send, Escape to unfocus);"
     local playerText = commonText.."Move like in any oter FPS;"
-    local serverText = commonText.."Move with ZQ/WASD/Arrows; Toggle mouse cursor with right click;; Send commands via the tchat :;/kick [player id] (to kick player);/ip (to get your ip);/stopserver (to stop the server and go back to the server manager);/loadscene [scene path] [gametype] (to load the provided menu/level with the provided gametype);Put double quotes (\") arond the scene path if it has spaces in it"
+    local serverText = commonText.."Move with ZQ/WASD/Arrows; Toggle mouse cursor with right click;; Send commands via the tchat :;/kick [player id] (to kick player);/ip (to get your ip);/stopserver (to stop the server and go back to the server manager);/loadscene [scene path] [gametype] (to load the provided menu/level with the provided gametype);Put double quotes (\") arond the scene path if it has spaces in it;/reloadscene to reload the current scene with same gametype;/settime [time in seconds] (to set the remaining time. Once it reached zero you have to change or reload the scene)"
     
     if IsServer then
         tutoGO.textArea.text = serverText

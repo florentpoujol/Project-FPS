@@ -7,7 +7,7 @@ function Behavior:Awake()
         if error == nil then
             CS.Screen.SetSize( screenSize.x, screenSize.y )
         end
-        print( "Screen size :", CS.Screen.GetSize() )
+        --print( "Screen size :", CS.Screen.GetSize() )
      end )
     
     Daneel.Event.Listen( "OnSceneLoad", CS.Input.UnlockMouse, true )
@@ -18,7 +18,6 @@ function Behavior:Awake()
     testLevel:AddTag( "button" )
     testLevel.OnClick = function()
         --Client.Init() done in Client:Awake()
-        print(Player.name, Client.player.name, LocalServer.playersById[ -1 ].name)
         Scene.Load( "Levels/Test Level" )
     end
     
@@ -115,7 +114,7 @@ function Behavior:Awake()
     end
     ]]
     
-    -- server name
+    -- server config url
     local inputGO = GameObject.Get( "Server Config Path.Input" )
     inputGO.input.OnValidate = function( input )
         Server.configFilePath = input.gameObject.textRenderer.text
@@ -132,18 +131,10 @@ function Behavior:Awake()
     end
     
     -- load config file path
-    Daneel.Storage.Load( "PFPS_ServerData", {}, function( value, error ) 
-        if error ~= nil then
-            Alert.SetText( "ERROR : Unable to load config file path : "..error )
-            cprint( "ERROR : Unable to load  config file path : "..error )
-            return
-        end
-        
-        if type( value ) ~= "table" then
-            Server.configFilePath = value
-            inputGO.textRenderer.text = value
-        end
-   end )
+    self:GetServerConfigPath( function( path )
+        Server.configFilePath = path
+        inputGO.textRenderer.text = path
+    end )
       
     
     -- server start/stop button
@@ -202,6 +193,30 @@ function Behavior:SaveConfigFilePath()
             Alert.SetText( "Config file path saved successfully." )
         end
     end )
+    
+    --if Server.configFilePath:startswith( "http://" ) or Server.configFilePath:startswith( "https://" ) then
+    if Server.configFilePath:match( "^http.+\.json$" ) then
+        Server.GetConfig()
+    else
+        Alert.SetText("The server config file url must begin by 'http' and ends by '.json'.")
+    end
+end
+
+
+function Behavior:GetServerConfigPath( callback )
+
+    Daneel.Storage.Load( "PFPS_ServerData", {}, function( value, error ) 
+        if error ~= nil then
+            Alert.SetText( "ERROR : Unable to load config file path : "..error )
+            cprint( "ERROR : Unable to load  config file path : "..error )
+            return
+        end
+        
+        if type( value ) ~= "table" and callback ~= nil then
+            callback( value )
+        end
+    end )
+    
 end
 
 

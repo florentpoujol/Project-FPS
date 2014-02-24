@@ -9,6 +9,8 @@ Gametype = {
     
     --defauldmConfig = {},
     --defaultdmConfig = {},
+    
+    roundEnded = false,
 }
 
 -- called from "Common Level Manager:Start()"
@@ -16,27 +18,28 @@ function Gametype.Init( gt )
     if gt == nil then
         gt = "dm"
     end
+    Gametype.roundEnded = false
     
     local server = GetServer()
     Gametype.Config = table.merge( Gametype.defaultConfig, server.game[ gt ] ) -- server.game[ gt ] may be nil
     
-    local time = Gametype.Config.timeLimit
-
-    Level.timerGO.updateTweener = Tween.Tweener( time, 0, time, {
-        OnUpdate = function( tweener )
-            Level.timerGO.Update( tweener.value )
-        end,
-        updateInterval = 10, 
-    } )
-     
-    if server.isOffline or IsServer then
-        Level.timerGO.updateTweener.OnComplete = function()
-            print("timer complete")
+    if LocalServer then -- server or offline
+        local time = Gametype.Config.timeLimit
+        
+        Level.timerGO.updateTweener = Tween.Tweener( time, 0, time, {
+            OnUpdate = function( tweener )
+                Level.timerGO.Update( tweener.value ) -- set in HUD script
+            end,
+            updateInterval = 10, 
+        } )
+         
+        if server.isOffline or IsServer then
+            Level.timerGO.updateTweener.OnComplete = function()
+                Gametype.OnRoundEnd()
+            end
         end
     end
-    
-    
-   
+       
     -- remove all gameObject that don't have the current gametype tag
     for short, full in pairs( Gametypes ) do
         if short ~= gt then
@@ -47,7 +50,6 @@ function Gametype.Init( gt )
             end
         end
     end
-    --print("Init game type", gt )
 
     --
     Level.spawns = {
@@ -77,7 +79,7 @@ function Gametype.Init( gt )
 end
 
 
--- make sure the team's level spawn ahs a camera and remove the camera to the other team's level spawn
+-- make sure the team's level spawn has a camera and remove the camera to the other team's level spawn
 -- so that the player "spawn" in its level spawn
 -- (the character is not spawned yet, but the player sees the level throught the camera on the level spawn)
 function Gametype.ResetLevelSpawn( team )
@@ -168,4 +170,42 @@ function Gametype.GetSpawn( team )
     until not tooClose
     
     return spawnGO
+end
+
+
+function Gametype.OnRoundEnd()
+    Gametype.roundEnded = true -- prevent player to spawn while waiting to 
+    
+    if LocalServer then 
+        if not LocalServer.isOffline then
+            ServerGO.networkSync:SendMessageToPlayers( "UpdateGameState", { roundEnded = true }, LocalServer.playerIds )
+        end
+        
+        for id, player in pairs( LocalServer.playersById ) do
+            if player.characterGO then
+                player.characterGO.s:Die( -1 ) -- -1 to tell the function that this is the end of the round and that it must not inscrese the death count or display message
+                -- the function will broadcast itself to the network to destroy the player
+            end
+        end
+        
+        -- force update of the timer
+        Level.timerGO.updateTweener:Destroy()
+        Level.timerGO.updateTweener = nil
+          
+    end
+
+    -- force update of the timer
+    Level.timerGO.Update( 0 ) 
+    
+    -- force update of the menu (already done from "Character Control:Die() for player who were spawned)
+    Level.menu.Show()
+    
+    
+    -- destroy all relevant game type object (nothing in DM or TDM)
+    
+    
+    -- destroy all player
+    
+    -- force display of the menu, prevent them to 
+    
 end
