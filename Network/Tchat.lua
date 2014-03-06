@@ -20,7 +20,7 @@ function Behavior:Awake()
     Tchat.gameObject = self.gameObject
     self.gameObject.tchat = self
     
-    self.gameObject.networkSync:Setup( 1 )
+    self.gameObject.networkSync:Setup( NetworkSyncIds.Tchat )
     GUI.Console.New( self.gameObject )
 end
 

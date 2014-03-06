@@ -270,15 +270,17 @@ end
 
 IsClient = true
 IsServer = false
---[[
+
 function IsServer()
-    return (LocalServer and LocalServer.isOffline == false)
+    --return (LocalServer and LocalServer.isOffline == false)
+    return IsServer
 end
 
 function IsClient()
-    return not IsServer()
+    --return not IsServer()
+    return IsClient
 end
-]]
+
 
 
 ----------------------------------------------------------------------
@@ -287,7 +289,7 @@ end
 function Behavior:Awake()
     ServerGO = self.gameObject
     self.gameObject.server = self
-    self.gameObject.networkSync:Setup( 0 )
+    self.gameObject.networkSync:Setup( NetworkSyncIds.Server )
     self.frameCount = 0
     
     -- Called when someone just arrived on the server, before the success callback of CS.NetWork.Connect() 

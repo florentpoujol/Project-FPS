@@ -7,9 +7,8 @@ Gametype = {
         --scoreLimit = 10,
     },
     
-    --defauldmConfig = {},
-    --defaultdmConfig = {},
-    
+    o = nil, -- the object
+        
     roundEnded = false,
 }
 
@@ -19,6 +18,11 @@ function Gametype.Init( gt )
         gt = "dm"
     end
     Gametype.roundEnded = false
+    
+    GametypeObjects = {
+        "ctf" = CTF,
+    }
+    Gametype.o = GametypeObjects[gt]
     
     local server = GetServer()
     Gametype.Config = table.merge( Gametype.defaultConfig, server.game[ gt ] ) -- server.game[ gt ] may be nil
@@ -76,6 +80,9 @@ function Gametype.Init( gt )
         } )
     end
    
+    if Gametype.o ~= nil then
+        Gametype.o.Init()
+    end
 end
 
 

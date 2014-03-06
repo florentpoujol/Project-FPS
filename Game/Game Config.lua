@@ -17,9 +17,14 @@ CS.FindAsset( "Test Map", "Map" ).levelBuilderBlocks = {
 
 
 -- networksync ids
--- 0 : Server
--- 1 : Tchat
--- 2 : Random map
+NetworkSyncIds = {
+    Server = 0,
+    Tchat = 1,
+    RandomMap = 2,
+    
+    CTFFlags = { 3, 4 }
+
+}
 
 
 Game = {} -- 24/02 used ?
@@ -63,6 +68,7 @@ local function SetTeamData( team )
         models = {
             bulletTrail = Asset( sTeam.."/Bullet Trail" ),
             crosshair = Asset( sTeam.."/Crosshair" ),
+            ctfFlag = Asset( sTeam.."/Flag" ),
             character = {
                 body = Asset( sTeam.."/Character/Body" )
             }
@@ -81,7 +87,7 @@ SetTeamData( 2 )
 ServerConfig = {
     maxPlayerCount = 12,
     name = "Florent's Server",
-    iPrivate = false,
+    isPrivate = false,
     
     game = {
         -- global game settings (will be applied for all levels/gametypes unless overridden in the rotation)

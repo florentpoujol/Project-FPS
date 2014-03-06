@@ -42,6 +42,8 @@ function Behavior:Awake()
     self.shootRay = Ray()
     
     --
+    self:SetupGametype( server.game.gametype )
+        
     self.frameCount = 0
     self.isLocked = true
     
@@ -123,25 +125,40 @@ end
 
 -- Set the self.team property and update the character's look
 function Behavior:SetTeam( team )
-    if team == nil then
-        team = self.team
-    end
-    if team == nil then
-        team = 1
-    end
-    
-    local oTeam = 2
-    if team == 2 then oTeam = 1 end
+    SetEntityTeam( self, team )
        
-    self.modelGO:RemoveTag( "team"..oTeam )
-    self.modelGO:AddTag( "team"..team ) -- used in Shoot() below
+    self.modelGO:RemoveTag( self.otherTeamTag )
+    self.modelGO:AddTag( self.teamTag ) -- used in Shoot() below and by triggers (see "CTF Flag" script)
     
-    self.team = team
-    if team > 0 then
-        self.modelGO.modelRenderer.model = Team[ team ].models.character.body
-        self.crosshairGO.modelRenderer.model = Team[ team ].models.crosshair
+    if self.team > 0 then
+        self.modelGO.modelRenderer.model = Team[ self.team ].models.character.body
+        self.crosshairGO.modelRenderer.model = Team[ self.team ].models.crosshair
     end
 end
+
+
+function Behavior:SetupGametype( gt )
+    if gt == "ctf" then
+        
+        self.flagGO = nil -- is set with the flag game object when the player has picked it up
+        -- the flag game object also become the character model's child
+        
+        self.modelGO.OnTriggerEnter = function( triggerGO )
+            if triggerGO.parent:HasTag( {"ctf", "flag"} )
+                local triggerScript = triggerGO.parent.s
+                
+                if self.team == triggerScript.team and not triggerScript.isPickedUp and not triggerScript.isAtBase then
+                    triggerScript:MoveTobase()
+    
+                else if self.team ~= triggerScript.team and not triggerScript.isPickedUp then
+                    self:PickUpCTFFlag()
+                
+                end
+            end
+        end
+    end
+end
+
 
 local first = false
 
@@ -453,6 +470,14 @@ function Behavior:Die( killerPlayerId )
         Level.scoreboard.Update()
     end
     
+    
+    -- CTF
+    local flag = self.gameObject:GetChild("CTF Flag")
+    if flag ~= nil then
+        flag.s:IsPickedUp( false )
+    end
+    
+    
     --
     self.gameObject:Destroy()
     
@@ -474,3 +499,34 @@ function Behavior:Die( killerPlayerId )
         Level.menu.Show()
     end
 end
+
+
+
+function Behavior:PickUpCTFFlag( flagGO )
+    
+    if flagGO == nil then -- happens online
+        flagGO = GameObject.GetWithTag( {"ctf", "flag", } )
+    end
+    
+    if flagGO ~= nil then
+        flagGO.s:PickUp( self.gameObject )
+    else
+        local flag = self.gameObject:GetChild("CTF Flag")
+        if flag ~= nil then
+            
+        end
+    end
+    flagGO.parent = self.modelGO
+    
+    flagGO
+end
+
+
+    if pickupGO ~= nil then
+        self.isPickedUp = true
+        self.isAtBase = false
+    else
+        self.isPickedUp = false
+    end
+    
+    self.gameObject.parent = pickupGO

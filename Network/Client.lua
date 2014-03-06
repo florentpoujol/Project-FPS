@@ -212,10 +212,19 @@ function Behavior:OnPlayerLeft( data )
     Tchat.AddLine( text )
     
     if player.characterGO ~= nil then
+        -- detach ctf flag
+        local flag = player.characterGO:GetChild("CTF Flag")
+        if flag ~= nil then
+            flag.s:IsPickedUp( false )
+        end
+        
+        -- /!\ if the player has an important item attached to it (ie: flag, bomb) /!\
         player.characterGO:Destroy() -- remove character
         player.characterGO = nil
     end
-    -- /!\ if the player has an important item attached to it (ie: flag, bomb) /!\
+    
+    
+    
     
     server.playersById[ data.playerId ] = nil
     server.playerIds = table.getkeys( server.playersById )
