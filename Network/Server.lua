@@ -9,6 +9,14 @@ LocalServer = nil -- is set in Server.Start() with a server instance if the play
 -- Server data is read from a .json file acceessible via internet and the CS.Web API
 -- For now, we will just use the ServerConfig table found in the "Game Config" script instead
 
+function IsServer( isOnline )
+    if isOnline ~= nil then
+        return (LocalServer ~= nil and LocalServer.isOffline ==  not isOnline)
+    else
+        return LocalServer ~= nil
+    end
+end
+
 
 Server = {
     configFilePath = "", -- set in Main menu
@@ -155,7 +163,7 @@ end
 
 -- start the local server
 function Server.Start( callback )
-    if IsServer then
+    if IsServer(true) then
         cprint( "Server.Start() : server is already running")
         return
     end
@@ -170,8 +178,6 @@ function Server.Start( callback )
         end
         
         LocalServer = server
-        IsClient = false
-        IsServer = true
     
         Scene.Load( server.game.scenePath )
     end
@@ -196,7 +202,7 @@ end
 
 -- stop the local server
 function Server.Stop( callback )
-    if IsServer then
+    if IsServer(true) then
         Alert.SetText( "Stopping server" )
         CS.Network.Server.Stop()
         
@@ -241,7 +247,7 @@ end
 local OriginalExit = CS.Exit
 
 function CS.Exit()   
-    if IsServer then
+    if IsServer(true) then
         Server.Stop( function() OriginalExit() end )
         -- what we want here is really to remove the server from the server browser
     else
@@ -250,37 +256,20 @@ function CS.Exit()
 end
 
 
--- experimental
+-- experimental (but used pretty much every where)
 function GetServer()
     return Client.server or LocalServer
     -- when offline, LocalServer is the "offline" server
-    
-    -- when offline, "server" could be Server.defaultConfig
-    -- OR we could create an OfflineServer instance, with only Client.player inside server.playersById (or just use LocalServer while Client.isConnected is false) (best idea so far)
 end
 
 function GetPlayer( playerId )
     local player = Client.player
     local server = GetServer()
-    if server and not server.isOffline and playerId and playerId ~= player.id then
+    if IsServer() and playerId and playerId ~= player.id then
         player = server.playersById[ playerId ]
     end
     return player
 end
-
-IsClient = true
-IsServer = false
-
-function IsServer()
-    --return (LocalServer and LocalServer.isOffline == false)
-    return IsServer
-end
-
-function IsClient()
-    --return not IsServer()
-    return IsClient
-end
-
 
 
 ----------------------------------------------------------------------
@@ -354,7 +343,7 @@ end
 
 
 function Behavior:Update()
-    if not IsServer or #LocalServer.playerIds < 1 then
+    if not IsServer(true) or #LocalServer.playerIds < 1 then
         return
     end
     

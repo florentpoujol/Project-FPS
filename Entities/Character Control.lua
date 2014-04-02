@@ -14,11 +14,13 @@ function Behavior:Awake()
     self.modelGO:AddTag( "characterModel" )
     self.cameraGO = self.gameObject:GetChild( "Camera", true )
     self.crosshairGO = self.cameraGO:GetChild( "Crosshair" )
+    self.frustumMaskGO = self.cameraGO:GetChild( "Frustum Mask" )
+    --self.frustumMaskGO.modelRenderer.opacity = 0
     
     --[[local healthbarGO = self.gameObject:GetChild( "Healthbar" )
     self.healthbarGO = healthbarGO:GetChild( "Bar" )
     self.healthbarBackgroundGO = healthbarGO:GetChild( "Background" )]]
-       
+    
     -- movements
     local server = GetServer()
     self.rotationSpeed = server.game.character.rotationSpeed
@@ -42,7 +44,7 @@ function Behavior:Awake()
     self.shootRay = Ray()
     
     --
-    self:SetupGametype( server.game.gametype )
+    --self:SetupGametype( server.game.gametype )
         
     self.frameCount = 0
     self.isLocked = true
@@ -50,8 +52,8 @@ function Behavior:Awake()
     if self.playerId == nil then -- set in Client:SpawnPlayer()
         self.playerId = -1
     end
-        
-    self:SetTeam()
+    
+    self:SetTeam(1)
         
     if self.isPlayable then
         self:SetupPlayableCharacter()
@@ -68,13 +70,15 @@ function Behavior:Start()
     -- in Start() to wait for the self.playerId to be set between the calls to Awake() and Start() in Client:SpawnPlayer()
     if self.playerId > 0 then
         local player = GetPlayer( self.playerId )
+        -- for debug
         self.gameObject.name = "Character: "..player.name
         self.modelGO.name = "Character model: "..player.name
     end
 end
 
 
--- Called from Client:PlayerSpawned() this character is the one the player should control
+-- Called from Client:PlayerSpawned() or Awake() above
+-- This character is the one the player should control
 -- Never called on the server
 function Behavior:SetupPlayableCharacter() 
     CharacterScript = self -- used in HUD
@@ -86,17 +90,18 @@ function Behavior:SetupPlayableCharacter()
         camera:Destroy()
     end
     
-    -- set player camera
-    self.cameraGO:Set( { camera = { fOV = 60 } } )
-    
+    -- create the player camera
+    self.cameraGO:Set({ camera = { fov = 60 } })
+    -- The Character prefab has no camera component so that characters spawn without camera
+      
     -- hud
-    Level.hudCamera.Recreate() -- recreate so that it is renderer after the player camera and the hud/menu appear over the world
+    Level.hudCamera.Recreate() -- recreate so that it is rendered after the player camera and the hud/menu appear over the world
     
     local hudGO = Level.hud
     
     self.hud = {}
-    self.hud.isOnGroundGO = hudGO:GetChild( "IsOnGround", true )
-    self.hud.groundDistance = hudGO:GetChild( "GroundDistance", true )
+    --self.hud.isOnGroundGO = hudGO:GetChild( "IsOnGround", true )
+    --self.hud.groundDistance = hudGO:GetChild( "GroundDistance", true )
     local playerHealthGO = hudGO:GetChild( "Player Health", true )
     -- self.hud.healthbar is the ProgressBar component
     self.hud.healthbar = playerHealthGO:GetChild( "Healthbar" ):AddComponent( "ProgressBar", {
@@ -120,6 +125,8 @@ function Behavior:SetupPlayableCharacter()
     --self.isLocked = true
     --Tween.Timer( 0.5, function() self.isLocked = false end )
     self.isLocked = false
+    
+    self.flagIcon = GameObject.Get( "HUD.Flag Icon" )
 end
 
 
@@ -137,35 +144,11 @@ function Behavior:SetTeam( team )
 end
 
 
-function Behavior:SetupGametype( gt )
-    if gt == "ctf" then
-        
-        self.flagGO = nil -- is set with the flag game object when the player has picked it up
-        -- the flag game object also become the character model's child
-        
-        self.modelGO.OnTriggerEnter = function( triggerGO )
-            if triggerGO.parent:HasTag( {"ctf", "flag"} )
-                local triggerScript = triggerGO.parent.s
-                
-                if self.team == triggerScript.team and not triggerScript.isPickedUp and not triggerScript.isAtBase then
-                    triggerScript:MoveTobase()
-    
-                else if self.team ~= triggerScript.team and not triggerScript.isPickedUp then
-                    self:PickUpCTFFlag()
-                
-                end
-            end
-        end
-    end
-end
-
-
-local first = false
-
 function Behavior:Update()
-    if IsClient and not self.isPlayable then 
+    if not IsServer() and not self.isPlayable then 
         return
-    end
+    end 
+    
     -- runs when server or when client and is playable
     
     self.frameCount = self.frameCount + 1
@@ -181,7 +164,7 @@ function Behavior:Update()
         return
     end
     
-    if IsServer and player == nil then
+    if IsServer(true) and player == nil then
         -- happens sometimes ?
         print("Character:Update() : player is nil on LocalServer", self.playerId )
         table.print( LocalServer.playersById )
@@ -228,7 +211,7 @@ function Behavior:Update()
         
         return
     
-    elseif IsServer then -- server
+    elseif IsServer(true) then -- server
         -- player.input has been set in Server:SetCharacterInput()
         if player.input ~= nil then
             input = player.input 
@@ -282,15 +265,14 @@ function Behavior:Update()
     self.lookAngles.y = self.lookAngles.y - self.rotationSpeed * mouseDelta.x
     -- self.lookAngles.z always == 0
     
-    self.modelGO.transform:SetEulerAngles( Vector3:New( self.lookAngles ) ) -- I think this shouldn't work, but it does
+    self.modelGO.transform:SetEulerAngles( Vector3:New( self.lookAngles ) )
     
-    -- self.gameObject.physics:WarpEulerAngles( Vector3:New( self.lookAngles ) ) 
+    --self.gameObject.physics:WarpEulerAngles( Vector3:New( self.lookAngles ) ) 
     -- /!\ 05/01/2014 for some reason having WarpEulerAngles uncommented makes that the
     -- the character is moved at 0,0,0 between Start() and the first call to Update()
+    -- >>> 29/03/14 this wrong behavior maybe due to the fact that the rotations are frozen ?
     
-    --print("WarpEulerAngles", Vector3:New( self.lookAngles ) )
-
-
+        
     -- Moving around
     local vertical = input.verticalAxis
     local horizontal = input.horizontalAxis
@@ -301,7 +283,7 @@ function Behavior:Update()
     newVelocity = newVelocity - Vector3:Left() * horizontal * self.walkSpeed
 
     local characterOrientation = Quaternion:FromAxisAngle( Vector3:Up(), self.lookAngles.y )
-    newVelocity = Vector3.Transform( newVelocity, characterOrientation )
+    newVelocity = newVelocity:Rotate( characterOrientation )
     newVelocity.y = velocity.y
     
     self.gameObject.physics:SetLinearVelocity( newVelocity )  
@@ -314,7 +296,7 @@ function Behavior:Update()
 
     
     -- update hud
-    if IsServer then
+   --[[ if IsServer(true) then
         return 
     end
     
@@ -326,6 +308,7 @@ function Behavior:Update()
         groundDistance = 9999
     end
     self.hud.groundDistance.textRenderer.text = "groundDistance: "..tostring( math.round( groundDistance, 2 ) )
+    ]]
 end
 
 
@@ -389,7 +372,7 @@ function Behavior:CreateShootLine( endPosition, shootRay )
         endPosition = shootRay.position + shootRay.direction * 9999
     end
     
-    if IsServer then
+    if IsServer() then
         local player = LocalServer.playersById[ self.playerId ]
         player.messagesToSend.CreateShootLine = { 
             endPosition,
@@ -417,7 +400,7 @@ end
 -- killerPlayerId (number) The playerId of the shooter
 function Behavior:TakeDamage( amount, killerPlayerId )
     local player = GetPlayer( self.playerId )
-    if IsServer then
+    if IsServer() then
         player.messagesToSend.TakeDamage = { 
             amount,
             killerPlayerId,
@@ -472,11 +455,15 @@ function Behavior:Die( killerPlayerId )
     
     
     -- CTF
-    local flag = self.gameObject:GetChild("CTF Flag")
-    if flag ~= nil then
-        flag.s:IsPickedUp( false )
+    if server.game.gametype == "ctf" then
+        local flag = self.modelGO:GetChild("CTF Flag")
+        if flag ~= nil then
+            flag.s:IsDropped( self.playerId )
+        end
+        -- flag is dropped and moved at the correct location on all clients by the server
+        -- but do it here too to make sure that the flag is dropped if the network is laggy
+        -- "flag" variable will be nil if the flag has already been dropped
     end
-    
     
     --
     self.gameObject:Destroy()
@@ -486,47 +473,18 @@ function Behavior:Die( killerPlayerId )
         player.characterGO = nil
     end
     
-    if IsServer then
+    if IsServer(true) then
         player.messagesToSend.Die = {
             killerPlayerId
         }
     end
     
     if self.isPlayable then
+        CharacterScript = nil
         Client.player.isSpawned = false
+        Client.player.characterGO = nil
         Gametype.ResetLevelSpawn( player.team )
         
         Level.menu.Show()
     end
 end
-
-
-
-function Behavior:PickUpCTFFlag( flagGO )
-    
-    if flagGO == nil then -- happens online
-        flagGO = GameObject.GetWithTag( {"ctf", "flag", } )
-    end
-    
-    if flagGO ~= nil then
-        flagGO.s:PickUp( self.gameObject )
-    else
-        local flag = self.gameObject:GetChild("CTF Flag")
-        if flag ~= nil then
-            
-        end
-    end
-    flagGO.parent = self.modelGO
-    
-    flagGO
-end
-
-
-    if pickupGO ~= nil then
-        self.isPickedUp = true
-        self.isAtBase = false
-    else
-        self.isPickedUp = false
-    end
-    
-    self.gameObject.parent = pickupGO

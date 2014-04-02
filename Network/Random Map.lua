@@ -57,6 +57,6 @@ function Behavior:ReceiveMapData( mapData )
     RandomMapData = mapData
     self:BuildMap( mapData )
 end
-CS.Network.RegisterMessageHandler( Behavior.ReceiveMapData, CS.Network.MessageSide.Player )
+CS.Network.RegisterMessageHandler( Behavior.ReceiveMapData, CS.Network.MessageSide.Players )
 
 

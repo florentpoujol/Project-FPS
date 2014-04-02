@@ -39,9 +39,6 @@ function Client.Init()
     end
     
     LocalServer.playersById[ -1 ] = Client.player
-    
-    IsClient = true
-    IsServer = false
 end
 
 
@@ -213,10 +210,13 @@ function Behavior:OnPlayerLeft( data )
     
     if player.characterGO ~= nil then
         -- detach ctf flag
-        local flag = player.characterGO:GetChild("CTF Flag")
+        local flag = player.characterGO.s.modelGO:GetChild("CTF Flag")
         if flag ~= nil then
-            flag.s:IsPickedUp( false )
+            flag.s:IsDropped( player.id )
         end
+        -- flag is dropped and moved at the correct location on all clients by the server
+        -- but do it here too to make sure that the flag is dropped if the network is laggy
+        -- flag variable will be nil if the flag has already been dropped
         
         -- /!\ if the player has an important item attached to it (ie: flag, bomb) /!\
         player.characterGO:Destroy() -- remove character
@@ -292,7 +292,7 @@ function Behavior:SpawnPlayer( data )
     player.characterGO = go
     player.isSpawned = true
     
-    if IsClient and data.playerId == Client.player.id then
+    if not IsServer(true) and data.playerId == Client.player.id then
         -- give control of the character to the player
         player.characterGO.s:SetupPlayableCharacter()
     end
@@ -325,13 +325,11 @@ function Behavior:ChangePlayerTeam( data )
         player.team = 1
     end
     
-    if IsServer then
+    if IsServer(true) then
         self.gameObject.networkSync:SendMessageToPlayers( "ChangePlayerTeam", data, LocalServer.playerIds )
     elseif Client.player.id == player.id then
         Gametype.ResetLevelSpawn( player.team )
     end
-    
-    --print(player.name.." ("..player.id..") changed team", IsServer)
 end
 CS.Network.RegisterMessageHandler( Behavior.ChangePlayerTeam, CS.Network.MessageSide.Players )
 

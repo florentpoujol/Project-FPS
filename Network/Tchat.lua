@@ -10,7 +10,8 @@ Tchat = {
     AddLine = function( text )
         if Tchat.gameObject ~= nil and Tchat.gameObject.inner ~= nil then
             print( text )
-            Tchat.gameObject.console:AddLine( text )
+            --Tchat.gameObject.console:AddLine( text )
+            Tchat.gameObject.textArea:AddLine( text )
         end
     end
 }
@@ -21,11 +22,33 @@ function Behavior:Awake()
     self.gameObject.tchat = self
     
     self.gameObject.networkSync:Setup( NetworkSyncIds.Tchat )
-    GUI.Console.New( self.gameObject )
+    --GUI.Console.New( self.gameObject )
+    
 end
 
 
 function Behavior:Start()
+    local maxLines = 10
+    local count = 0
+    self.gameObject.textArea.linesFilter = function( textArea, lines )
+        lines = table.reverse( lines )
+        local tempLines = {}
+        for i, line in ipairs( lines ) do
+            table.insert( tempLines, line )
+            if #tempLines >= maxLines then 
+                break
+            end
+        end
+        
+        count = count + 1
+        if count > 50 then
+            count = 0
+            textArea.Text = table.concat( lines, textArea.NewLine )
+        end
+        return table.reverse( tempLines )
+    end
+    
+    
     -- in Start() to wait for the input to be created
     
     self.input = self.gameObject:GetChild( "Input" ).input
@@ -69,7 +92,7 @@ end
 function Behavior:SendTextToServer( text )
     text = text:trim()
     if text:startswith( "/" ) then
-        if IsServer then
+        if IsServer() then
             -- do stuff with the command
             text = text:sub( 2 ):trimstart()
             local command = text:split( " " )-- 1: command  2: parameters
@@ -103,13 +126,13 @@ function Behavior:SendTextToServer( text )
             if cmdName ~= nil and AdminCmd[ cmdName ] ~= nil then
                 AdminCmd[ cmdName ]( unpack(command) )
             elseif cmdName == nil then -- never happens, cmdName is always at least ""
-                self.gameObject.console:AddLine( "Command unknow : "..tostring(text) )
+                self.gameObject.textArea:AddLine( "Command unknow : "..tostring(text) )
             else
-                self.gameObject.console:AddLine( "Command unknow '"..cmdName.."' with params : "..table.concat(command, ", " ) )
+                self.gameObject.textArea:AddLine( "Command unknow '"..cmdName.."' with params : "..table.concat(command, ", " ) )
             end
             
         else
-            self.gameObject.console:AddLine( "You are not allowed to issue commands on this server !" )
+            self.gameObject.textArea:AddLine( "You are not allowed to issue commands on this server !" )
         end
         
         return
@@ -117,10 +140,10 @@ function Behavior:SendTextToServer( text )
 
     if Client.isConnected then
         self.gameObject.networkSync:SendMessageToServer( "BroadcastText", { text = text } )
-    elseif IsServer then
+    elseif IsServer(true) then
         self:BroadcastText( { text = text }, -2 )
     else -- client offline
-        self.gameObject.console:AddLine( text )
+        self.gameObject.textArea:AddLine( text )
     end
 end
 
@@ -152,13 +175,13 @@ function Behavior:ReceiveText( data )
     end
     local player = server.playersById[ data.senderId ]
     if player ~= nil then
-        if IsServer then
+        if IsServer() then
             playerName = "["..player.name.."] ("..player.id..")"
         else
             playerName = "["..player.name.."]"
         end
     end
 
-    self.gameObject.console:AddLine( playerName.." "..text )
+    self.gameObject.textArea:AddLine( playerName.." "..text )
 end
 CS.Network.RegisterMessageHandler( Behavior.ReceiveText, CS.Network.MessageSide.Players )

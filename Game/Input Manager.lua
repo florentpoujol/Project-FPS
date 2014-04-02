@@ -14,11 +14,7 @@ InputManager = {
     gameObject = nil, -- use a game object just to be able to use tags but a custom tag system that just stores some strings will have better performance
 }
 
-
-if CS.DaneelModules == nil then
-    CS.DaneelModules = {}
-end  
-CS.DaneelModules[ "InputManager" ] = InputManager
+Daneel.modules[ "InputManager" ] = InputManager
 
 -------------
 

@@ -11,6 +11,7 @@ Gametype = {
         
     roundEnded = false,
 }
+GametypeObjects = {}
 
 -- called from "Common Level Manager:Start()"
 function Gametype.Init( gt )
@@ -19,9 +20,7 @@ function Gametype.Init( gt )
     end
     Gametype.roundEnded = false
     
-    GametypeObjects = {
-        "ctf" = CTF,
-    }
+    
     Gametype.o = GametypeObjects[gt]
     
     local server = GetServer()
@@ -37,7 +36,7 @@ function Gametype.Init( gt )
             updateInterval = 10, 
         } )
          
-        if server.isOffline or IsServer then
+        if IsServer() then
             Level.timerGO.updateTweener.OnComplete = function()
                 Gametype.OnRoundEnd()
             end
@@ -67,12 +66,12 @@ function Gametype.Init( gt )
     }
     
     local team = 1
-    if IsClient and Client.player then
+    if not IsServer() and Client.player then
         team = Client.player.team
     end
     Gametype.ResetLevelSpawn( team )
     
-    if IsServer then
+    if IsServer(true) then
         -- On the server, the level spawn is also the game object with the "Camera Control" script, that is moved by the admin
         Level.levelSpawns[1]:AddComponent( "Game/Camera Control", {
             moveOriented = true,
@@ -80,8 +79,23 @@ function Gametype.Init( gt )
         } )
     end
    
-    if Gametype.o ~= nil then
-        Gametype.o.Init()
+    -- CTF
+    if gt == "ctf" then
+        local flagDummy = GameObject.GetWithTag( { "ctf", "flag", "team1" } )[1]
+        local flag = GameObject.New("Entities/CTF Flag")
+        flag.s:SetTeam(1)
+        flag.transform.position = flagDummy.transform.position
+        flag.s:SetBase()
+        --CTF.flagGOs[1] = flag
+        flagDummy:Destroy()
+        
+        flagDummy = GameObject.GetWithTag( { "ctf", "flag", "team2" } )[1]
+        flag = GameObject.New("Entities/CTF Flag")
+        flag.s:SetTeam(2)
+        flag.transform.position = flagDummy.transform.position
+        flag.s:SetBase()
+        --CTF.flagGOs[2] = flag
+        flagDummy:Destroy()
     end
 end
 
@@ -183,7 +197,7 @@ end
 function Gametype.OnRoundEnd()
     Gametype.roundEnded = true -- prevent player to spawn while waiting to 
     
-    if LocalServer then 
+    if IsServer() then 
         if not LocalServer.isOffline then
             ServerGO.networkSync:SendMessageToPlayers( "UpdateGameState", { roundEnded = true }, LocalServer.playerIds )
         end
@@ -198,7 +212,6 @@ function Gametype.OnRoundEnd()
         -- force update of the timer
         Level.timerGO.updateTweener:Destroy()
         Level.timerGO.updateTweener = nil
-          
     end
 
     -- force update of the timer
@@ -210,9 +223,7 @@ function Gametype.OnRoundEnd()
     
     -- destroy all relevant game type object (nothing in DM or TDM)
     
-    
     -- destroy all player
-    
-    -- force display of the menu, prevent them to 
+     
     
 end

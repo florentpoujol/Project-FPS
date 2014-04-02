@@ -144,7 +144,7 @@ function Behavior:Awake()
     local stopText = "Stop server"
     
     buttonGO.OnClick = function()
-        if IsServer then
+        if IsServer(true) then
             Server.Stop( function( server, data )
                 if data and data.deleteFromServerBrowser then
                     Alert.SetText( "Successfully removed the server from the server browser" )
@@ -163,7 +163,7 @@ function Behavior:Awake()
         end
     end
     
-    if IsServer then
+    if IsServer(true) then
         buttonGO.textRenderer.text = stopText
     else
         buttonGO.textRenderer.text = startText

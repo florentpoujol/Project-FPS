@@ -58,9 +58,7 @@ Gametypes = {
 
 
 -- Team specific data
-Team = {
-
-}
+Team = {}
 
 local function SetTeamData( team )
     local sTeam = "Team"..team
@@ -68,7 +66,12 @@ local function SetTeamData( team )
         models = {
             bulletTrail = Asset( sTeam.."/Bullet Trail" ),
             crosshair = Asset( sTeam.."/Crosshair" ),
-            ctfFlag = Asset( sTeam.."/Flag" ),
+            
+            ctf = {
+                flag = Asset( sTeam.."/CTF/Flag" ),
+                flagIcon = Asset( sTeam.."/CTF/Flag Icon" ),
+            },
+            
             character = {
                 body = Asset( sTeam.."/Character/Body" )
             }
@@ -92,7 +95,7 @@ ServerConfig = {
     game = {
         -- global game settings (will be applied for all levels/gametypes unless overridden in the rotation)
         scenePath = "Levels/Test Level", -- set in Client:LoadLevel
-        gametype = "tdm",
+        gametype = "ctf",
         friendlyFire = false,
         
         --roundTime = 10, -- temp var set in Client:LoadLevel(), used in Gametype.Init()
@@ -109,16 +112,24 @@ ServerConfig = {
             timeLimit = 600, -- seconds
             --scoreLimit = 100, -- score limit per team (player in DM)
         },
-        -- ...
         
-        -- other setting (wepons damage, characters movement...)
-        -- characterMoveSpeed = ?,
-        -- characterJumpSpeed = ?,
-        -- 
+        ctf = {
+            timeLimit = 600,
+            captureLimit = 5,
+            
+            killScore = 10,
+            deathScore = -5,
+            
+            flagCaptureScore = 20,
+            flagPickupScore = 5,
+            flagReturnHomeScore = 5
+        },
+        
+        
         character = {
             rotationSpeed = 0.1,
             walkSpeed = 35.0,
-            jumpSpeed = 3000, --1000 = about one cube hight
+            jumpSpeed = 1000, --100 = about one cube hight
             health = 3,
             
             -- this is placeholder, will be defined by each weapons
@@ -242,7 +253,7 @@ AdminCmd = {
 }
 
 
-function DaneelUserConfig()
+function Daneel.UserConfig()
     return {
         textRenderer = {
             font = "Calibri"

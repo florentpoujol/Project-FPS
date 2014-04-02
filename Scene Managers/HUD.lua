@@ -22,22 +22,29 @@ function Behavior:Awake()
     ------------------------------------------------------
     -- player HUD
     
+    
     Level.hud = GameObject.Get( "HUD" )
     Level.hud.Show = function()
         Level.menu.Hide()
         
         if Client.player.isSpawned then
-            Level.hud.transform.localPosition = Vector3(0,0,-5)
+            Level.hud.transform.localPosition = Vector3(0,0,-20) -- menu is at -10
+            --Level.hud.hud.layer = 20
         end
         Level.hud.isDisplayed = true
         InputManager.AddTag( "huddisplayed" )
+        --Daneel.Event.Fire("OnHudDisplayed")
     end
     Level.hud.Hide = function()
         Level.hud.transform.localPosition = Vector3(0,0,999)
+        --Level.hud.hud.layer = -20
         Level.hud.isDisplayed = false
         InputManager.RemoveTag( "huddisplayed" )
+        --Daneel.Event.Fire("OnHudHidden")        
     end
     Level.hud.Hide()
+    
+     
     
     
     ---------------------------------------------------------------------
@@ -80,10 +87,17 @@ function Behavior:Awake()
     local disconnectGO = GameObject.Get( "Disconnect" )
     disconnectGO:AddTag( "mouseinput" )
     disconnectGO.OnClick = function()
-        if Client.isConnected then
-            Client.Disconnect()
+        if Client.player.isSpawned then
+            CharacterScript = nil
+            Client.player.characterGO = nil
+            Client.player.isSpawned = false
         end
-        Scene.Load( "Menus/Main Menu" )
+            
+        if Client.isConnected then
+            Client.Disconnect() -- loads "Menus/Server Browser"
+        else -- offline
+            Scene.Load( "Menus/Main Menu" )
+        end
     end
     
     if not Client.isConnected then
@@ -102,9 +116,12 @@ function Behavior:Awake()
         end
     
         -- update buttons
-        if IsClient then
+        if not IsServer(true) then
             if not Gametype.roundEnded then
-                if Client.player.isSpawned then                    
+                if Client.player.isSpawned then
+                    -- hide change team button
+                    changeTeamGO.textRenderer.text = ""
+                    
                     spawnGO.textRenderer.text = "Suicide"
                     spawnGO.OnClick = function()
                         if not Gametype.roundEnded then
@@ -115,7 +132,9 @@ function Behavior:Awake()
                             end
                         end
                     end
-                else                    
+                else
+                    changeTeamGO.textRenderer.text = "Change Team"
+                    
                     spawnGO.textRenderer.text = "Spawn"
                     spawnGO.OnClick = function()
                         if Client.isConnected then
@@ -134,7 +153,7 @@ function Behavior:Awake()
         end
         
         Level.hud.Hide()
-        Level.menu.transform.localPosition = Vector3(0,0,-5)
+        Level.menu.transform.localPosition = Vector3(0,0,-10) -- hud is at -20
         
         Level.menu.isDisplayed = true
         InputManager.AddTag( "menudisplayed" )
@@ -145,7 +164,7 @@ function Behavior:Awake()
         end
         
         Level.menu.transform.localPosition = Vector3(0,0,999)
-        if IsClient then
+        if not IsServer(true) then
             CS.Input.LockMouse()
         end
         Level.menu.isDisplayed = false
@@ -196,7 +215,7 @@ function Behavior:Awake()
             if server.game.gametype == "dm" then
                 for i, player in ipairs( playersByScore ) do
                     local playerId = ""
-                    if IsServer then
+                    if IsServer(true) then
                         playerId = " ("..player.id..") "
                     end
                     nameListText = nameListText..player.name..playerId..";"
@@ -255,7 +274,7 @@ function Behavior:Awake()
         end
     end
     
-    if IsServer then
+    if IsServer(true) then
         if changeTeamGO then
             changeTeamGO:Destroy()
         end
@@ -269,7 +288,7 @@ end
 function Behavior:Start()
     -- in Start to wait for the input and textArea to be created
     local tutoGO = GameObject.Get( "Tuto" )
-    if IsClient then
+    if not IsServer(true) then
         tutoGO.hud.position = Vector2( "30%", 10 )
     end
     tutoGO.textArea.areaWidth = (CS.Screen.GetSize().x - tutoGO.hud.position.x - 10).."px"
@@ -278,7 +297,7 @@ function Behavior:Start()
     local playerText = commonText.."Move like in any oter FPS;"
     local serverText = commonText.."Move with ZQ/WASD/Arrows; Toggle mouse cursor with right click;; Send commands via the tchat :;/kick [player id] (to kick player);/ip (to get your ip);/stopserver (to stop the server and go back to the server manager);/loadscene [scene path] [gametype] (to load the provided menu/level with the provided gametype);Put double quotes (\") arond the scene path if it has spaces in it;/reloadscene to reload the current scene with same gametype;/settime [time in seconds] (to set the remaining time. Once it reached zero you have to change or reload the scene)"
     
-    if IsServer then
+    if IsServer(true) then
         tutoGO.textArea.text = serverText
     else
         tutoGO.textArea.text = playerText

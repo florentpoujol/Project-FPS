@@ -1,6 +1,10 @@
 
 
 function SetEntityTeam( script, team )
+    if team == nil or team < 1 then 
+        team = 1
+    end
+    
     local gameObject = script.gameObject
     
     if team == nil then
@@ -16,7 +20,7 @@ function SetEntityTeam( script, team )
     script.team = team
     script.teamTag = "team"..team
     script.otherTeamTag = "team"..oTeam
-        
+    
     gameObject:RemoveTag( script.otherTeamTag )
     gameObject:AddTag( script.teamTag )
 end

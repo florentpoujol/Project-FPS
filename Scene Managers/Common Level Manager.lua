@@ -6,15 +6,6 @@ function Behavior:Awake()
     local mapGO = GameObject.Get( "Map" )
     Level.mapGO = mapGO
     
-    -- level builder
-    --[[ -- not used at this time
-    local tileSet = mapGO.mapRenderer.tileSet
-    if tileSet.entitiesByBlockID ~= nil then
-        --mapGO.mapRenderer:ReplaceEntityBlocks( {x=-20,y=-5,z=-20},  {x=20,y=10,z=20} )
-
-    end
-    ]]
-    
     local map = mapGO.mapRenderer.map
     if map.levelBuilderBlocks ~= nil then
         map:UpdateBlockIDs( map.levelBuilderBlocks )
@@ -22,8 +13,9 @@ function Behavior:Awake()
     
     -- set physics now that the map has been modified
     mapGO:CreateComponent( "Physics" )
-    mapGO.physics:SetBodyType( Physics.BodyType.Static )
     mapGO.physics:SetupAsMap( map )
+    mapGO.physics:SetBodyType( Physics.BodyType.Static )
+
     
     -- spawn HUD
     GameObject.New( "In-Game/HUD" )
