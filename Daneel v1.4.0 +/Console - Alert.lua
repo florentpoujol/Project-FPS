@@ -240,7 +240,7 @@ function cprint( ... )
             end
         end
 
-        consoleGO.console:AddLine( line )
+        consoleGO.textArea:AddLine( line )
     end
 end
 

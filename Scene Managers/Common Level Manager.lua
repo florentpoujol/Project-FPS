@@ -16,9 +16,8 @@ function Behavior:Awake()
     mapGO.physics:SetupAsMap( map )
     mapGO.physics:SetBodyType( Physics.BodyType.Static )
 
-    
-    -- spawn HUD
-    GameObject.New( "In-Game/HUD" )
+    -- spawn UI (player HUD, menu, scoreboard)
+    GameObject.New( "In-Game/UI" )
 end
 
 
@@ -32,12 +31,11 @@ function Behavior:Start()
         end
     end
     
-    local server = GetServer()
-    Gametype.Init( server.game.gametype )
+    Gametype.StartRound()
     
     if Client.isConnected then
         Client.player.isReady = true -- set to false in Server:LoadLevel()
-        --ServerGO.networkSync:SendMessageToServer( "MarkPlayerReady" ) -- now that the scene is fully loaded set ready to begin receiving game status update
+        ServerGO.networkSync:SendMessageToServer("MarkPlayerReady")
     end
 end
 

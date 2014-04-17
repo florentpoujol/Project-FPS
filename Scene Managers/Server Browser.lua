@@ -11,9 +11,9 @@ function Behavior:Awake()
     self.deadIPs = {} -- IPs we can't reach
     -- keep the list here so that we don't try to connect again when refreshing the list if it was not deleted from the server browser
     
-    if Game.disconnectionReason ~= nil then -- set in Client:OnDisconnected()
-        Alert.SetText( "You have been disconnected for reason : "..Game.disconnectionReason )
-        Game.disconnectionReason = nil
+    if Client.disconnectionReason ~= nil then -- set in Client:OnDisconnected()
+        Alert.SetText( "You have been disconnected for reason : "..Client.disconnectionReason )
+        Client.disconnectionReason = nil
     else
         self:GetServers()
     end

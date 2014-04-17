@@ -23,33 +23,23 @@ function Behavior:Awake()
     -- player HUD
     
     
-    Level.hud = GameObject.Get( "HUD" )
+    Level.hud = GameObject.Get( "Player HUD" )
     Level.hud.Show = function()
         Level.menu.Hide()
-        
+                
         if Client.player.isSpawned then
             Level.hud.transform.localPosition = Vector3(0,0,-20) -- menu is at -10
-            --Level.hud.hud.layer = 20
         end
         Level.hud.isDisplayed = true
         InputManager.AddTag( "huddisplayed" )
-        --Daneel.Event.Fire("OnHudDisplayed")
     end
     Level.hud.Hide = function()
         Level.hud.transform.localPosition = Vector3(0,0,999)
-        --Level.hud.hud.layer = -20
         Level.hud.isDisplayed = false
         InputManager.RemoveTag( "huddisplayed" )
-        --Daneel.Event.Fire("OnHudHidden")        
     end
     Level.hud.Hide()
-    
-     
-    
-    
-    ---------------------------------------------------------------------
-    -- In-game menu
-    
+
     -- timer
     Level.timerGO = GameObject.Get( "Timer" )
     Level.timerGO.Update = function( time )
@@ -63,9 +53,13 @@ function Behavior:Awake()
         end
         Level.timerGO.textRenderer.text = minutes..":"..seconds    
     end
-    -- Update tweener created in Gametype.init()
+    -- Update tweener created in Gametype.StartRound()
     
+       
     
+    ---------------------------------------------------------------------
+    -- In-game menu
+
     local changeTeamGO = GameObject.Get( "Change Team" )
     if server.game.gametype ~= "dm" then
         changeTeamGO:AddTag( "mouseinput" )
@@ -189,14 +183,14 @@ function Behavior:Awake()
     Level.scoreboard.Hide()
     
     local gametypeGO = Level.scoreboard:GetChild( "Gametype", true )
-    gametypeGO.textRenderer.text = "Gametype : "..Gametypes[ server.game.gametype ]
+    gametypeGO.textRenderer.text = "Gametype : "..GametypeNames[ server.game.gametype ]
     
     local levelGO = Level.scoreboard:GetChild( "Level", true )
     levelGO.textRenderer.text = "Level : "..Scene.current.path
     
     local nameListGO = Level.scoreboard:GetChild( "Name.List", true )
     local kdListGO = Level.scoreboard:GetChild( "KD.List", true )
-    --local scoreListGO = GameObject.Get( "Scoreboard.Score.List" )        
+    local scoreListGO = Level.scoreboard:GetChild( "Score.List", true )        
     
     Level.scoreboard.Update = function()
         -- update score board
@@ -211,6 +205,7 @@ function Behavior:Awake()
             
             local nameListText = ""
             local kdListText = ""
+            local scoreListText = ""
                            
             if server.game.gametype == "dm" then
                 for i, player in ipairs( playersByScore ) do
@@ -220,23 +215,28 @@ function Behavior:Awake()
                     end
                     nameListText = nameListText..player.name..playerId..";"
                     kdListText = kdListText..player.kills.."/"..player.deaths..";"
+                    scoreListText = scoreListText..player.score..";"
                 end
             else
                 nameListText = "----- Team 1 -----;"
                 kdListText = " ;" -- leave the space at the beginning so that the newLine char is taken into account (to be fixed in TextAreas)
+                scoreListText = " ;"
                 for i, player in ipairs( playersByScore ) do
                     if player.team == 1 then
                         nameListText = nameListText..player.name..";"
                         kdListText = kdListText..player.kills.."/"..player.deaths..";"
+                        scoreListText = scoreListText..player.score..";"
                     end
                 end
                 
                 nameListText = nameListText..";----- Team 2 -----;"
                 kdListText = kdListText..";;"
+                scoreListText = scoreListText..";;"
                 for i, player in ipairs( playersByScore ) do
                     if player.team == 2 then
                         nameListText = nameListText..player.name..";"
                         kdListText = kdListText..player.kills.."/"..player.deaths..";"
+                        scoreListText = scoreListText..player.score..";"
                     end
                 end
             end
@@ -244,6 +244,7 @@ function Behavior:Awake()
             if nameListGO.textArea then
                 nameListGO.textArea.text = nameListText
                 kdListGO.textArea.text = kdListText
+                scoreListGO.textArea.text = scoreListText
             end  
         end
     end
@@ -287,6 +288,8 @@ end
 
 function Behavior:Start()
     -- in Start to wait for the input and textArea to be created
+    
+    -- Tuto
     local tutoGO = GameObject.Get( "Tuto" )
     if not IsServer(true) then
         tutoGO.hud.position = Vector2( "30%", 10 )
@@ -306,6 +309,7 @@ function Behavior:Start()
     Level.menu.Show()
     
     
+    -- Chat
     local tchatGO = GameObject.Get( "Tchat" )
     local inputGO = tchatGO.child
     inputGO.child.modelRenderer.opacity = 0.2

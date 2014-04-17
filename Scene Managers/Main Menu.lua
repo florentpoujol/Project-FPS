@@ -17,7 +17,6 @@ function Behavior:Awake()
     local testLevel = GameObject.Get( "Test Level" )
     testLevel:AddTag( "button" )
     testLevel.OnClick = function()
-        --Client.Init() done in Client:Awake()
         Scene.Load( "Levels/Test Level" )
     end
     
@@ -40,7 +39,7 @@ function Behavior:Awake()
             end
             
             background.modelRenderer.opacity = 0.2
-            Daneel.Storage.Save( "ProjectFPS_PlayerName", playerName, function( error )
+            Daneel.Storage.Save( "PFPS_PlayerName", playerName, function( error )
                 if error ~= nil then
                     Alert.SetText( "Error saving player name : "..error )
                 end
@@ -49,7 +48,7 @@ function Behavior:Awake()
         end
     end
     
-    Daneel.Storage.Load( "ProjectFPS_PlayerName", "Player", function( playerName, error )
+    Daneel.Storage.Load( "PFPS_PlayerName", "Player", function( playerName, error )
         if error ~= nil then
             Alert.SetText( "Error loading player name : "..error )
             return
@@ -117,14 +116,14 @@ function Behavior:Awake()
     -- server config url
     local inputGO = GameObject.Get( "Server Config Path.Input" )
     inputGO.input.OnValidate = function( input )
-        Server.configFilePath = input.gameObject.textRenderer.text
+        ServerConfigFilePath = input.gameObject.textRenderer.text
         self:SaveConfigFilePath()        
     end
     inputGO.input.OnFocus = function( input )
         if input.isFocused then
             input.backgroundGO.modelRenderer.opacity = 0.5
         else
-            Server.configFilePath = input.gameObject.textRenderer.text
+            ServerConfigFilePath = input.gameObject.textRenderer.text
             self:SaveConfigFilePath()
             input.backgroundGO.modelRenderer.opacity = 0.2        
         end
@@ -186,7 +185,7 @@ end -- end Awake()
 
 
 function Behavior:SaveConfigFilePath()
-    Daneel.Storage.Save( "PFPS_ServerData", Server.configFilePath, function( error )
+    Daneel.Storage.Save( "PFPS_ServerConfigFilePath", ServerConfigFilePath, function( error )
         if error ~= nil then
             Alert.SetText( "Unable to save server data : can't write data" )
         else
@@ -195,8 +194,8 @@ function Behavior:SaveConfigFilePath()
     end )
     
     --if Server.configFilePath:startswith( "http://" ) or Server.configFilePath:startswith( "https://" ) then
-    if Server.configFilePath:match( "^http.+\.json$" ) then
-        Server.GetConfig()
+    if ServerConfigFilePath:match( "^http.+\.json$" ) then
+        Server.LoadConfigFile()
     else
         Alert.SetText("The server config file url must begin by 'http' and ends by '.json'.")
     end
@@ -205,7 +204,7 @@ end
 
 function Behavior:GetServerConfigPath( callback )
 
-    Daneel.Storage.Load( "PFPS_ServerData", {}, function( value, error ) 
+    Daneel.Storage.Load( "PFPS_ServerConfigFilePath", {}, function( value, error ) 
         if error ~= nil then
             Alert.SetText( "ERROR : Unable to load config file path : "..error )
             cprint( "ERROR : Unable to load  config file path : "..error )

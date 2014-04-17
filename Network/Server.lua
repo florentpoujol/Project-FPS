@@ -1,37 +1,23 @@
 
 ServerGO = nil -- the game object this script is attached to
 
-LocalServer = nil -- is set in Server.Start() with a server instance if the player creates a local server (unset in Server.Stop())
+LocalServer = nil -- is set in Server.Start() with a server instance if the player creates a local server (unset in Server.Stop(), but immediately reset in Client.Init())
 -- OR this is the offline server instance (set in Client.Init())
--- Is set when offline on online and server
--- Is not set on connected client
+-- Is nil in connected client (unset in Client:OnConnected())
 
 -- Server data is read from a .json file acceessible via internet and the CS.Web API
 -- For now, we will just use the ServerConfig table found in the "Game Config" script instead
 
-function IsServer( isOnline )
-    if isOnline ~= nil then
-        return (LocalServer ~= nil and LocalServer.isOffline ==  not isOnline)
-    else
-        return LocalServer ~= nil
-    end
-end
 
+--ServerBrowserAddress = "http://localhost/CSServerBrowser/index.php"
+ServerBrowserAddress = "http://csserverbrowser.florentpoujol.fr/index.php"
+
+ServerConfigFilePath = "" -- set in Main menu
 
 Server = {
-    configFilePath = "", -- set in Main menu
-    
-    --[[
-    localData = { -- stores the data that is saved locally and that can be set by the server admin
-        name = "Default server name",
-        maxPlayerCount = 10,
-        isPrivate = false,
-        scenePath = "Levels/Test Level" -- the scene to which the server admin is redirected when the server is created
-    }, 
-    ]]
-    
-    defaultConfig = {
-        isOffline = false,
+    defaultProperties = {
+        isOnline = false,
+        
         serverBrowserAddress = nil, -- is set to the server browser address when server exist on it
         ip = "127.0.0.1",
         id = -1, -- the id of a server is given by the server browser
@@ -45,42 +31,71 @@ Server = {
         iPrivate = false,
     
         game = {
-            -- global game settings (will be applied for all levels/gametypes unless overridden in the rotation)
+            -- global game settings (will be applied for all levels/gametypes)
+            
             scenePath = "Levels/Test Level", -- set in Client:LoadLevel
-            gametype = "dm",
+            gametype = "ctf",
             friendlyFire = false,
             
-            -- gametype specific settings ?   
-            dm = {
-                --roundLimit = 1, -- rounds before going to the next rotation
-                --timeLimit = 10, -- minutes
-                scoreLimit = 100, -- score limit per team (player in DM)
-            },
-            -- ...
+            roundTime = 600, -- set in Client:LoadLevel()
             
-            -- other setting (wepons damage, characters movement...)
-            -- characterMoveSpeed = ?,
-            -- characterJumpSpeed = ?,
-            -- 
-        },
-        
-        -- the rotation table define the suite of levels and game parameters
-        -- each rotation entries override the "game" table
-        rotation = {},
+            -- gametype specific settings
+            --[[
+            generic gametype settings :
+            {
+                timeLimit = 600, -- in seconds
+                scoreLimit = nil,
+                killScore = 10,
+                deathScore = -5,
+                suicideScore = 0,
+            }
+            ]]
+            
+            dm = {
+                timeLimit = 600, -- seconds
+            },
+            
+            tdm = {
+                timeLimit = 600, -- seconds
+            },
+            
+            ctf = {
+                timeLimit = 600,
+                captureLimit = 5,
+                
+                killScore = 10,
+                deathScore = -5,
+                
+                flagCaptureScore = 20,
+                flagPickupScore = 5,
+                flagReturnHomeScore = 5
+            },
+            
+            
+            character = {
+                rotationSpeed = 0.1,
+                walkSpeed = 18,
+                jumpSpeed = 600, --200 = about one cube hight
+                health = 3,
+                
+                weaponDamage = 1, -- same unit as health
+                shootRate = 5, -- shoots per second
+            }
+        }, -- end of game table
     }
 }
+
 Server.__index = Server
 Server.__tostring = function( server )
     return "Server: "..tostring(server.id)..": "..tostring(server.name)..": "..tostring(server.ip)
 end
 
-
 -- creates a new server instance (do not start the server)
 function Server.New( params )
-    local server = table.copy( Server.defaultConfig, true )
+    local server = table.copy( Server.defaultProperties, true )
     
     if type( params ) == "table" then
-        server = table.merge( server, params, true )
+        table.mergein( server, params, true )
     end
 
     return setmetatable( server, Server )
@@ -110,7 +125,7 @@ function Server.UpdateServerBrowser( server, delete, callback )
     
     local serverBrowserAddress = server.serverBrowserAddress
     if serverBrowserAddress == nil then
-        serverBrowserAddress = ServerBrowserAddress -- set in "Game Config" script
+        serverBrowserAddress = ServerBrowserAddress -- set above
     end
     
     CS.Web.Post( serverBrowserAddress, inputData, CS.Web.ResponseType.JSON, function( error, data ) 
@@ -149,58 +164,69 @@ function Server.UpdateServerBrowser( server, delete, callback )
     
 end
 
-function Server.GetConfig( callback )
-    CS.Web.Get( Server.configFilePath, nil, CS.Web.ResponseType.JSON, function( error, serverConfig )
+
+-- Load the server's remote .json config file
+-- Pass the resulting Lua table as first argument of the call back.
+-- used in Server.Start()
+function Server.LoadConfigFile( successCallback, errorCallback )
+    CS.Web.Get( ServerConfigFilePath, nil, CS.Web.ResponseType.JSON, function( error, serverConfig )
         if error then
-            Alert.SetText("Server file path couldn't be read with error :", error.message )
+            Alert.SetText("Server config file path couldn't be read with error :", error.message )
+            if errorCallback ~= nil then
+                errorCallback()
+            end
         end
         
-        if callback ~= nil then
-            callback( serverConfig )
+        if successCallback ~= nil then
+            successCallback( serverConfig )
         end
     end )
 end
 
--- start the local server
-function Server.Start( callback )
+
+-- Start the local server.
+-- Called from MainMenu manager
+function Server.Start( serverBrowserCallback )
     if IsServer(true) then
         cprint( "Server.Start() : server is already running")
         return
     end
     
-    CS.Network.Server.Start()
-    
-    
-    local start = function( config )
+    local startServer = function( config )
+        if config == nil then
+            Alert.SetText( "Sarting server with default config." )
+            config = ServerConfig -- placeholder
+        end
+        
+        CS.Network.Server.Start()
+                
         local server = Server.New( config )
+        server.isOnline = true
         if not server.isPrivate then
-            server:UpdateServerBrowser( callback )   
+            server:UpdateServerBrowser( serverBrowserCallback )   
         end
         
         LocalServer = server
-    
         Scene.Load( server.game.scenePath )
     end
     
-    
-    local serverConfig = ServerConfig
     -- try to get the server config path
-    if Server.configFilePath:startswith( "http://" ) or Server.configFilePath:startswith( "https://" ) then
-        Server.GetConfig( function( config )
-            if config ~= nil then
-                Alert.SetText( "Sarting server with config at URL : "..Server.configFilePath )
-                start( config )
-                return
-            end
-        end )
+    if ServerConfigFilePath:startswith( "http://" ) or ServerConfigFilePath:startswith( "https://" ) then
+        Server.LoadConfigFile( 
+            function( config )
+                Alert.SetText( "Sarting server with config at URL : "..ServerConfigFilePath )
+                startServer( config )
+            end,
+            startServer
+        )
+    else
+        startServer()
     end
-    
-    Alert.SetText( "Sarting server with default config." )
-    start( ServerConfig )
 end
 
 
--- stop the local server
+-- Stop the local server.
+-- Called from Main Menu manager
 function Server.Stop( callback )
     if IsServer(true) then
         Alert.SetText( "Stopping server" )
@@ -221,7 +247,8 @@ function Server.Stop( callback )
 end
 
 
--- Connect the client to the provided server
+-- Connect the client to the provided server.
+-- Called from Client.ConnectAsPlayer()
 function Server.Connect( server, callback )   
     Client.Init()
     
@@ -256,24 +283,42 @@ function CS.Exit()
 end
 
 
--- experimental (but used pretty much every where)
+----------------------------------------------------------------------
+-- Global helpers
+
+function IsServer( isOnline )
+    if isOnline ~= nil then
+        return (LocalServer ~= nil and LocalServer.isOnline == isOnline)
+    else
+        return LocalServer ~= nil
+    end
+end
+
 function GetServer()
-    return Client.server or LocalServer
-    -- when offline, LocalServer is the "offline" server
+    return LocalServer or Client.server
 end
 
 function GetPlayer( playerId )
-    local player = Client.player
-    local server = GetServer()
-    if IsServer() and playerId and playerId ~= player.id then
-        player = server.playersById[ playerId ]
+    return GetServer().playersById[ playerId ]
+end
+
+function GetGameConfig()
+    return GetServer().game
+end
+
+function GetGametype()
+    return GetGameConfig().gametype
+end
+
+function GetGametypeConfig( gt )
+    if gt == nil then
+        gt = GetGametype()
     end
-    return player
+    return GetGameConfig()[ gt ]
 end
 
 
 ----------------------------------------------------------------------
-
 
 function Behavior:Awake()
     ServerGO = self.gameObject
@@ -304,7 +349,6 @@ function Behavior:Awake()
             end
             
             -- player already spawned will be created in Client:UpdateGameState() if their coordinates are sent by Server:Update()
-            
             self.gameObject.networkSync:SendMessageToPlayers( "OnConnected", data, { player.id } )
         end
     )
@@ -316,9 +360,7 @@ function Behavior:Awake()
     -- or its game has shut down
     -- NOT called when the server stops
     CS.Network.Server.OnPlayerLeft( 
-        function( playerId )
-            --cprint("Server.OnPlayerLeft", playerId)
-            
+        function( playerId )           
             local player = LocalServer.playersById[ playerId ]
             -- player will be nil if the client hasn't registered as player
             -- which happens when the server browser connects to the server
@@ -333,9 +375,7 @@ function Behavior:Awake()
                 -- this will be done in Client:OnPlayerLeft() too but must be done here to prevent sending the message to the disconnected player
                 -- which throw a "System.Collections.Generic.KeyNotFoundException"
                 
-                self.gameObject.networkSync:SendMessageToPlayers( "OnPlayerLeft", data, LocalServer.playerIds )
                 self.gameObject.client:OnPlayerLeft( data )
-                --could also write self.gameObject:SendMessage( "OnPlayerLeft", data )
             end
         end
     )
@@ -348,65 +388,52 @@ function Behavior:Update()
     end
     
     self.frameCount = self.frameCount + 1
-    local data = { dataByPlayerId = {} }
-    local sendMessage = false
+    local data = {}
     
-    -- position and rotation
-    if self.frameCount % 3 == 0 then
+    -- round time
+    if self.frameCount % 5 == 0 then
         local tweener = Level.timerGO.updateTweener
         if tweener then
             data.roundTime = tweener.value
         end
         
+        self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", data, LocalServer.playerIds, CS.Network.DeliveryMethod.UnreliableSequenced, 2 )
+    end    
+    
+    -- position and rotation
+    if self.frameCount % 5 == 0 then
         for id, player in pairs( LocalServer.playersById ) do
-            if player.isSpawned and player.characterGO ~= nil and player.characterGO.inner ~= nil then
-                data.dataByPlayerId[ id ] = {
+            if player.isSpawned and player.characterGO ~= nil and player.characterGO.inner ~= nil then               
+                local playerData = {
                     position = player.characterGO.transform:GetPosition(),
                     eulerAngles = player.characterGO.s.modelGO.transform:GetEulerAngles(),
                 }
+                
+                player.characterGO.networkSync:SendMessageToPlayers( "UpdatePosition", playerData, LocalServer.playerIds, CS.Network.DeliveryMethod.UnreliableSequenced, 3 )
             end
         end
-    
-        self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", data, LocalServer.playerIds, CS.Network.DeliveryMethod.UnreliableSequenced )
     end
-    
-    -- messagesToSend
-    data.dataByPlayerId = {}
-    sendMessage = false
-    
-    for id, player in pairs( LocalServer.playersById ) do
-        if player.messagesToSend ~= nil and table.getlength( player.messagesToSend ) > 0 then
-            sendMessage = true
-            data.dataByPlayerId[ id ] = {
-                messagesToSend = player.messagesToSend,
-            }
-            player.messagesToSend = {}
-        end
-    end
-    
-    if sendMessage then
-        self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", data, LocalServer.playerIds )
-    end
-    
-    
-    -- others stuffs :
-    -- position of objecive (flag, cart) ?
-    -- state of objectives (height of flag, flag team)
-    -- time until round ends
 end
 
 
--- Called from the success callback sent to Server.Connect() from Client.ConnectAsPlayer().
+-- Called from the success callback passed to Server.Connect() from Client.ConnectAsPlayer().
 -- Data only holds the client's name
 function Behavior:RegisterPlayer( data, playerId )
     if #LocalServer.playerIds < LocalServer.maxPlayerCount then
         
-        local player = table.copy( Player, true )
+        local player = {} -- Player.New() is used in Client:OnPlayerJoined()
         player.id = playerId
         player.name = data.name
         
         if player.name == nil or player.name:trim() == "" then
             player.name = "John Doe " .. player.id
+        end
+        
+        for id, _player in pairs( LocalServer.playersById ) do
+            if player.name == _player.name then
+                player.name = player.name.." "..player.id
+                break
+            end
         end
         
         -- choose a team
@@ -421,20 +448,8 @@ function Behavior:RegisterPlayer( data, playerId )
             end
         end
         
-        -- the connected player already has the playersById table via "OnConnected"
-        LocalServer.playersById[ player.id ] = player
-        LocalServer.playerIds = table.getkeys( LocalServer.playersById )
-        
-        self.gameObject.networkSync:SendMessageToPlayers( "OnPlayerJoined", player, LocalServer.playerIds )
-        self.gameObject.client:OnPlayerJoined( player )
-        
-        local data = {
-            scenePath = LocalServer.game.scenePath,
-            gametype = LocalServer.game.gametype,
-        }
-        
-        self.gameObject.networkSync:SendMessageToPlayers( "LoadLevel", data, { player.id } ) 
-        
+        -- broadcast the new player
+        self.gameObject.client:OnPlayerJoined( player ) 
     else
         self:DisconnectPlayer( playerId, "Server full" )
     end
@@ -446,55 +461,57 @@ CS.Network.RegisterMessageHandler( Behavior.RegisterPlayer, CS.Network.MessageSi
 -- All other players are notified of the reason via CS.Network.Server.OnPlayerLeft()
 function Behavior:DisconnectPlayer( id, reason )
     ServerGO.networkSync:SendMessageToPlayers( "OnDisconnected", { reason = reason }, { id } )
-    
-    LocalServer.playersById[ id ].reasonForDisconnection = reason
-    
+    LocalServer.playersById[ id ].reasonForDisconnection = reason -- used in CS.Network.Server.OnPlayerLeft()
     CS.Network.Server.DisconnectPlayer( id )
 end
-
 
 -- Called from the client's "Character Control" script or menus
 -- Data contains the player input
 function Behavior:SetCharacterInput( data, playerId )
-
+    local player = LocalServer.playersById[ playerId ]
     -- spawn / suicide
-    if data.input.spawnButtonClicked then
-        --cprint( "Player #"..playerId.." wants to spawn !" )
-        
-        local player = LocalServer.playersById[ playerId ]
-        if not player.isSpawned and not player.characterGO then
+    if data.input.spawnButtonClicked then       
+        if not player.isSpawned and player.characterGO == nil then
             local spawnGO = Gametype.GetSpawn( player.team )
             
             local data = {
                 playerId = playerId,
                 position = spawnGO.transform.position,
                 eulerAngles = spawnGO.transform.eulerAngles,
+                
             }
             
-            self.gameObject.networkSync:SendMessageToPlayers( "SpawnPlayer", data, LocalServer.playerIds ) -- why not leave player data be broadcasted via Client:UpdateGameState() and let it creates the game objects ?
             self.gameObject.client:SpawnPlayer( data )
-        
         else -- suicide
-            local player = GetPlayer( playerId )
-            player.messagesToSend.Die = { playerId }
             player.characterGO.s:Die( playerId )
         end
     
     -- changeteam
     elseif data.input.changeTeamButtonClicked then
-        self.gameObject.client:ChangePlayerTeam( { playerId = playerId } ) 
-    
-    else
-        LocalServer.playersById[ playerId ].input = data.input
+        if not player.isSpawned and player.characterGO == nil then
+            self.gameObject.client:ChangePlayerTeam( { playerId = playerId } ) 
+        end
     end
 end
 CS.Network.RegisterMessageHandler( Behavior.SetCharacterInput, CS.Network.MessageSide.Server )
 
 
 -- Called from Start() in the common level manager (when a client has fully loaded a level)
--- Mark player as ready to receive game statut update via UpdateGameState()
+-- Mark player as ready to receive game statut update via Client:UpdateGameState()
 function Behavior:MarkPlayerReady( data, playerId )
     LocalServer.playersById[ playerId ].isReady = true
+    Daneel.Event.Fire("OnPlayerReady", playerId)
+    
+    -- create other characters on the client side
+    local playerIdsToSpawn = {}
+    for id, player in pairs( LocalServer.playersById ) do
+        if player.isSpawned and player.characterGO ~= nil then
+            table.insert( playerIdsToSpawn, id )    
+        end
+    end
+    if #playerIdsToSpawn > 0 then
+        self.gameObject.networkSync:SendMessageToPlayers( "UpdateGameState", { playerIdsToSpawn = playerIdsToSpawn }, { playerId } )
+    end
 end
 CS.Network.RegisterMessageHandler( Behavior.MarkPlayerReady, CS.Network.MessageSide.Server )
 -- Notifying the server of the readyness is actually currently useless since the server data is sent to all players anyway

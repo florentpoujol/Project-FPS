@@ -1,50 +1,50 @@
 
-Gametype = {
-    Config = {},
-    defaultConfig = {
-        timeLimit = 600, -- 10 minutes
-        --roundLimit = 1,
-        --scoreLimit = 10,
-    },
-    
-    o = nil, -- the object
-        
+-- Gametype is always written with a lowercase t
+
+GametypeNames = {
+    -- short = full
+    dm = "Death Match",
+    tdm = "Team Death Match",
+    ctf = "Capture The Flag",
+}
+
+
+Gametype = {       
     roundEnded = false,
 }
-GametypeObjects = {}
 
--- called from "Common Level Manager:Start()"
-function Gametype.Init( gt )
+
+-- Called from "Common Level Manager:Start()"
+function Gametype.StartRound( gt )
     if gt == nil then
-        gt = "dm"
+        gt = GetGametype() or "dm"
     end
     Gametype.roundEnded = false
     
+    local gameConfig = GetGameConfig()
+    gameConfig.gametype = gt
+    local gtConfig = GetGametypeConfig()
     
-    Gametype.o = GametypeObjects[gt]
-    
-    local server = GetServer()
-    Gametype.Config = table.merge( Gametype.defaultConfig, server.game[ gt ] ) -- server.game[ gt ] may be nil
-    
-    if LocalServer then -- server or offline
-        local time = Gametype.Config.timeLimit
+    if IsServer() then -- server or offline
+        local time = gtConfig.timeLimit or 9999 --9999 s = 167 m = 2.8 h
         
+        -- Level.timerGO is set in UI
         Level.timerGO.updateTweener = Tween.Tweener( time, 0, time, {
             OnUpdate = function( tweener )
-                Level.timerGO.Update( tweener.value ) -- set in HUD script
+                Level.timerGO.Update( tweener.value ) -- set in UI script
             end,
             updateInterval = 10, 
         } )
          
         if IsServer() then
             Level.timerGO.updateTweener.OnComplete = function()
-                Gametype.OnRoundEnd()
+                Gametype.EndRound()
             end
         end
     end
        
-    -- remove all gameObject that don't have the current gametype tag
-    for short, full in pairs( Gametypes ) do
+    -- remove all gameObjects that don't have the current gametype tag
+    for short, full in pairs( GametypeNames ) do
         if short ~= gt then
             for i, go in pairs( GameObject.GetWithTag( short ) ) do
                 if not go:HasTag( gt ) then
@@ -66,7 +66,7 @@ function Gametype.Init( gt )
     }
     
     local team = 1
-    if not IsServer() and Client.player then
+    if not IsServer() and Client.player then -- is Client
         team = Client.player.team
     end
     Gametype.ResetLevelSpawn( team )
@@ -81,36 +81,35 @@ function Gametype.Init( gt )
    
     -- CTF
     if gt == "ctf" then
-        local flagDummy = GameObject.GetWithTag( { "ctf", "flag", "team1" } )[1]
-        local flag = GameObject.New("Entities/CTF Flag")
-        flag.s:SetTeam(1)
-        flag.transform.position = flagDummy.transform.position
-        flag.s:SetBase()
-        --CTF.flagGOs[1] = flag
-        flagDummy:Destroy()
+        local flagDummies = GameObject.GetWithTag( { "ctf", "flag", "team1" } )
+        for i, flagDummy in pairs( flagDummies ) do
+            local flag = GameObject.New("Entities/CTF Flag")
+            flag.s:SetTeam(1)
+            flag.transform.position = flagDummy.transform.position
+            flag.s:SetBase()
+            flagDummy:Destroy()
+        end
         
-        flagDummy = GameObject.GetWithTag( { "ctf", "flag", "team2" } )[1]
-        flag = GameObject.New("Entities/CTF Flag")
-        flag.s:SetTeam(2)
-        flag.transform.position = flagDummy.transform.position
-        flag.s:SetBase()
-        --CTF.flagGOs[2] = flag
-        flagDummy:Destroy()
+        flagDummies = GameObject.GetWithTag( { "ctf", "flag", "team2" } )
+        for i, flagDummy in pairs( flagDummies ) do
+            local flag = GameObject.New("Entities/CTF Flag")
+            flag.s:SetTeam(2)
+            flag.transform.position = flagDummy.transform.position
+            flag.s:SetBase()
+            flagDummy:Destroy()
+        end
     end
 end
 
 
--- make sure the team's level spawn has a camera and remove the camera to the other team's level spawn
--- so that the player "spawn" in its level spawn
+-- Make sure the team's level spawn has a camera and remove the camera to the other team's level spawn
+-- so that the player "spawn" in its level spawn.
 -- (the character is not spawned yet, but the player sees the level throught the camera on the level spawn)
 function Gametype.ResetLevelSpawn( team )
     if team == nil then
         team = 1
     end
-    local otherTeam = 2
-    if team == 2 then
-        otherTeam = 1
-    end
+    local otherTeam = Team[team].otherTeam
     
     local spawn = Level.levelSpawns[ team ]
     if not spawn.camera then
@@ -127,34 +126,20 @@ end
 
 
 -- Find a spawn point not too close to any player(depend on the team and game type)
--- Return the spawn game object
+-- Argument team may be the team as a number, a player instance, or nil.
+-- Return the spawn game object.
+-- Called from Server:SetCharacterInput() and Client:SpawnPlayer()
 function Gametype.GetSpawn( team )   
-    local argType = type( team )
-    if argType == "table" then -- player
-        team = team.team
-    elseif argType == "nil" then
-        if Client.player then
-            team = Client.player.team
-        else
-            team = 1
-        end
-    end
-    
+    team = team or 1    
     local spawns = Level.spawns[ team ]
     
-    local gametype = Server.defaultConfig.game.gametype
-    local server = GetServer()
-    if server then
-        gametype = server.game.gametype
-    end
-    
-    if gametype == "dm" then
+    if GetGametype() == "dm" then
         spawns = table.merge( Level.spawns[1], Level.spawns[2] )
     end
-         
+    
     local spawnCount = #spawns
     if spawnCount < 1 then
-        cprint( "SpawnPlayer() : spawnCount="..spawnCount, player.team )
+        cprint( "ERROR Gametype.GetSpawn() : Wrong spawn count", "spawnCount="..spawnCount, "team="..tostring(team) )
         return
     end
     
@@ -164,23 +149,21 @@ function Gametype.GetSpawn( team )
     end
     
     local loopCount = 0
-    local spawnPos = nil
     local spawnGO = nil
     
-    -- find a spawn without another player too close
+    -- find a spawn not too close to any other players
     repeat
         loopCount = loopCount + 1
+        if loopCount > spawnCount * 10 then
+            -- FIXME : find the most isolated spawn
+            break
+        end
         
         local rand = math.floor( math.randomrange( 1, spawnCount + 0.99 ) )
         
         spawnGO = spawns[ rand ]
-        spawnPos = spawnGO.transform.position
+        local spawnPos = spawnGO.transform.position
         local tooClose = false
-        
-        if loopCount > spawnCount * 10 then
-            break
-            -- TODO : find the most isolated spawn
-        end
         
         for i, characterPos in pairs( characterPositions ) do
             if Vector3.Distance( characterPos, spawnPos ) < 5 then
@@ -194,36 +177,32 @@ function Gametype.GetSpawn( team )
 end
 
 
-function Gametype.OnRoundEnd()
-    Gametype.roundEnded = true -- prevent player to spawn while waiting to 
-    
-    if IsServer() then 
-        if not LocalServer.isOffline then
-            ServerGO.networkSync:SendMessageToPlayers( "UpdateGameState", { roundEnded = true }, LocalServer.playerIds )
-        end
+-- Called when a round ends (because of time or score limit is reached) (on the server and all clients via Client:UpdateGameState())
+function Gametype.EndRound()
+    Gametype.roundEnded = true -- prevent player to spawn while waiting to move to the next map
+
+    if IsServer(true) then
+        ServerGO.networkSync:SendMessageToPlayers( "UpdateGameState", { roundEnded = true }, LocalServer.playerIds )
         
-        for id, player in pairs( LocalServer.playersById ) do
+        
+        for id, player in pairs( server.playersById ) do
             if player.characterGO then
-                player.characterGO.s:Die( -1 ) -- -1 to tell the function that this is the end of the round and that it must not inscrese the death count or display message
-                -- the function will broadcast itself to the network to destroy the player
+                player.characterGO.s:Die() -- nil argument to tell the function that this is the end of the round and that it must not inscrese the death count or display message
+                -- no need to run this code on all client sbecause the function will broadcast itself to the network
             end
         end
-        
-        -- force update of the timer
+    
         Level.timerGO.updateTweener:Destroy()
         Level.timerGO.updateTweener = nil
     end
-
-    -- force update of the timer
-    Level.timerGO.Update( 0 ) 
     
-    -- force update of the menu (already done from "Character Control:Die() for player who were spawned)
+    -- force update of the timer
+    Level.timerGO.Update( 0 )
+    
+    -- force update of the menu (already done from "Character Control":Die() for player who were spawned)
     Level.menu.Show()
     
-    
-    -- destroy all relevant game type object (nothing in DM or TDM)
-    
-    -- destroy all player
-     
-    
+    -- TODO
+    -- load next level in ap rotation
+    -- currently (04/2014) wait for the server admin to manually change gametype/level
 end

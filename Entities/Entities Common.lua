@@ -18,6 +18,7 @@ function SetEntityTeam( script, team )
     if team == 2 then oTeam = 1 end
     
     script.team = team
+    script.otherTeam = oTeam
     script.teamTag = "team"..team
     script.otherTeamTag = "team"..oTeam
     
