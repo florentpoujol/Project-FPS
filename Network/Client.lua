@@ -390,7 +390,7 @@ function Behavior:UpdateGameState( data )
                 if player.characterGO == nil then                   
                     self:SpawnPlayer( { playerId = id } )
                 end
-            endr
+            end
         end
     end
 end
