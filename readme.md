@@ -1,6 +1,6 @@
 # Project FPS
 
-A WIP generic multiplyer FPS made with [CraftStudio](http://craftstud.io).
+A WIP generic multiplayer FPS made with [CraftStudio](http://craftstud.io).
 
 Features as of 04/08/2014 :
 
